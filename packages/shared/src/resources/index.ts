@@ -12,8 +12,10 @@ import { MaintenanceClient } from './maintenanceClient';
 import { AnnouncementsClient } from './announcementsClient';
 import { FileClient } from './fileClient';
 import { UsersClient } from './usersClient';
+import { NotificationsClient } from './notificationsClient';
 
 export * from './query';
+export * from './notificationsClient';
 export * from './fileClient';
 export * from './usersClient';
 export * from './idempotency';
@@ -58,6 +60,8 @@ export interface ResourceClients {
   readonly files: FileClient;
   /** User admin: activate/deactivate + soft-delete a login (Req 3.1, 3.7). */
   readonly users: UsersClient;
+  /** In-app notification inbox: the signed-in user's own notifications + read state. */
+  readonly notifications: NotificationsClient;
 }
 
 /** Construct the bundle of resource clients over an {@link ApiClient}. */
@@ -76,5 +80,6 @@ export function createResourceClients(api: ApiClient): ResourceClients {
     announcements: new AnnouncementsClient(api),
     files: new FileClient(api),
     users: new UsersClient(api),
+    notifications: new NotificationsClient(api),
   };
 }

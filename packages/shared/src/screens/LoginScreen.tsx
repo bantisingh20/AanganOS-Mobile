@@ -43,14 +43,17 @@ const LOGO_URI = 'https://cdn-icons-png.flaticon.com/512/619/619153.png';
 
 /**
  * Login screen (Req 1.1, 1.2). Identifier + password → `AuthService.login` via the auth context,
- * which stores the token + roles and flips the app to authenticated. On failure the envelope's
- * safe message is shown in the banner (invalid credentials → the UNAUTHENTICATED message) and any
- * per-field `fieldErrors` under their inputs.
+ * which stores the token + roles and flips the app to authenticated. On failure the envelope's safe
+ * message shows in the banner and any per-field `fieldErrors` under their inputs.
  *
- * UI: a branded header band with a circular logo badge over an elevated white card holding the
- * form, keyboard-avoiding and scrollable so it stays usable on small screens. Styled purely with
- * React Native `StyleSheet` + shared theme tokens (no CSS/Tailwind — those don't apply to native
- * views without extra tooling). All inputs/buttons are the accessible shared primitives (Req 65.6).
+ * UI — a modern "soft UI" blend of GLASS + CLAY + NEUMORPHISM done in pure RN (no CSS/Tailwind, no
+ * native blur dep so it's a JS-only reload):
+ *  - a deep gradient-like BACKDROP faked with layered translucent colour "blobs" over a dark base;
+ *  - a frosted GLASS card (translucent white fill + hairline light border + layered soft shadow)
+ *    reads as frosted over the colourful backdrop (no real backdrop-blur, approximated);
+ *  - a CLAY logo badge (puffy, rounded, dual soft shadow);
+ *  - NEUMORPHIC field + button wells (fields grouped on a soft extruded surface tinted to the card).
+ * All inputs/buttons remain the accessible shared primitives (Req 65.6).
  */
 export function LoginScreen({ appTitle, onForgotPassword, headerSlot }: LoginScreenProps) {
   const { login } = useAuth();
@@ -71,9 +74,6 @@ export function LoginScreen({ appTitle, onForgotPassword, headerSlot }: LoginScr
       // On success the AuthProvider switches the shell to the authenticated app — nothing to do.
     } catch (err) {
       const view = toFormError(err);
-      // On the LOGIN screen specifically, an UNAUTHENTICATED failure IS a bad credential (unless the
-      // account is locked, which carries its own message). The global mapper now says "session
-      // ended" for in-app 401s, so restore the credential wording here where it's the right message.
       if (err instanceof ApiRequestError && err.code === 'UNAUTHENTICATED' && !/lock/i.test(err.message)) {
         setError({ message: 'The phone number or password is incorrect. Please try again.', fieldErrors: view.fieldErrors });
       } else {
@@ -86,131 +86,183 @@ export function LoginScreen({ appTitle, onForgotPassword, headerSlot }: LoginScr
 
   const insets = useSafeInsets();
   return (
-    <SafeAreaView style={styles.safe} accessibilityLabel={`${appTitle} sign in`}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <ScrollView
-          contentContainerStyle={[
-            styles.scroll,
-            { paddingTop: styles.scroll.padding + insets.top, paddingBottom: styles.scroll.padding + insets.bottom },
-          ]}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
+    <View style={styles.root} accessibilityLabel={`${appTitle} sign in`}>
+      {/* Gradient-like backdrop: a dark base with soft translucent colour blobs (pure-RN "gradient"). */}
+      <View style={styles.backdrop} pointerEvents="none">
+        <View style={[styles.blob, styles.blobTop]} />
+        <View style={[styles.blob, styles.blobMid]} />
+        <View style={[styles.blob, styles.blobBottom]} />
+      </View>
+
+      <SafeAreaView style={styles.flex}>
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
-          {/* Branded header */}
-          <View style={styles.header}>
-            <View style={styles.logoBadge}>
-              <Image
-                source={{ uri: LOGO_URI }}
-                style={styles.logo}
-                resizeMode="contain"
-                accessible={false}
-              />
-            </View>
-            <Text style={styles.brand} accessibilityRole="header">
-              CommunityOS
-            </Text>
-            <Text style={styles.brandSub}>{appTitle}</Text>
-          </View>
-
-          {/* Card */}
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Welcome back</Text>
-            <Text style={styles.cardSubtitle}>Sign in to continue to your account</Text>
-
-            {headerSlot}
-            <FormBanner message={error.message} tone="error" testID="login-error" />
-
-            <PhoneField
-              label="Phone number"
-              value={identifier}
-              onChangeText={setIdentifier}
-              {...(error.fieldErrors.identifier ? { error: error.fieldErrors.identifier } : {})}
-              editable={!submitting}
-              placeholder="Your phone number"
-              testID="login-identifier"
-            />
-            <AppTextField
-              label="Password"
-              value={password}
-              onChangeText={setPassword}
-              error={error.fieldErrors.password}
-              placeholder="Your password"
-              secureTextEntry
-              autoCapitalize="none"
-              autoComplete="password"
-              textContentType="password"
-              editable={!submitting}
-              returnKeyType="go"
-              onSubmitEditing={submit}
-              testID="login-password"
-            />
-
-            <View style={styles.forgotRow}>
-              <LinkButton
-                title="Forgot password?"
-                onPress={onForgotPassword}
-                disabled={submitting}
-                accessibilityHint="Opens the password reset screen"
-                testID="login-forgot"
-              />
+          <ScrollView
+            contentContainerStyle={[
+              styles.scroll,
+              { paddingTop: styles.scroll.padding + insets.top, paddingBottom: styles.scroll.padding + insets.bottom },
+            ]}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            {/* Branded header — clay logo badge */}
+            <View style={styles.header}>
+              <View style={styles.logoClay}>
+                <View style={styles.logoInner}>
+                  <Image
+                    source={{ uri: LOGO_URI }}
+                    style={styles.logo}
+                    resizeMode="contain"
+                    accessible={false}
+                  />
+                </View>
+              </View>
+              <Text style={styles.brand} accessibilityRole="header">CommunityOS</Text>
+              <View style={styles.brandPill}>
+                <Text style={styles.brandSub}>{appTitle}</Text>
+              </View>
             </View>
 
-            <AppButton
-              title="Sign in"
-              onPress={submit}
-              loading={submitting}
-              accessibilityHint="Signs in with your email or phone and password"
-              testID="login-submit"
-            />
-          </View>
+            {/* Frosted glass card */}
+            <View style={styles.glassCard}>
+              <Text style={styles.cardTitle}>Welcome back</Text>
+              <Text style={styles.cardSubtitle}>Sign in to continue to your account</Text>
 
-          <Text style={styles.footer}>Secure community management</Text>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+              {headerSlot}
+              <FormBanner message={error.message} tone="error" testID="login-error" />
+
+              {/* Neumorphic field well: the inputs sit on a soft extruded surface. */}
+              <View style={styles.fieldWell}>
+                <PhoneField
+                  label="Phone number"
+                  value={identifier}
+                  onChangeText={setIdentifier}
+                  {...(error.fieldErrors.identifier ? { error: error.fieldErrors.identifier } : {})}
+                  editable={!submitting}
+                  placeholder="Your phone number"
+                  testID="login-identifier"
+                />
+                <AppTextField
+                  label="Password"
+                  value={password}
+                  onChangeText={setPassword}
+                  error={error.fieldErrors.password}
+                  placeholder="Your password"
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoComplete="password"
+                  textContentType="password"
+                  editable={!submitting}
+                  returnKeyType="go"
+                  onSubmitEditing={submit}
+                  testID="login-password"
+                />
+              </View>
+
+              <View style={styles.forgotRow}>
+                <LinkButton
+                  title="Forgot password?"
+                  onPress={onForgotPassword}
+                  disabled={submitting}
+                  accessibilityHint="Opens the password reset screen"
+                  testID="login-forgot"
+                />
+              </View>
+
+              <AppButton
+                title="Sign in"
+                onPress={submit}
+                loading={submitting}
+                accessibilityHint="Signs in with your email or phone and password"
+                testID="login-submit"
+              />
+            </View>
+
+            <Text style={styles.footer}>Secure community management</Text>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: theme.color.background },
+  root: { flex: 1, backgroundColor: theme.color.hero },
   flex: { flex: 1 },
-  scroll: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    padding: theme.spacing.xl,
-    gap: theme.spacing.xl,
+
+  // --- Gradient-like backdrop (dark base + soft colour blobs) ---
+  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: theme.color.hero, overflow: 'hidden' },
+  blob: { position: 'absolute', borderRadius: 9999 },
+  blobTop: {
+    width: 420, height: 420, top: -140, right: -120,
+    backgroundColor: 'rgba(37,99,235,0.45)', // brand blue glow
   },
-  header: { alignItems: 'center', gap: theme.spacing.sm },
-  logoBadge: {
-    width: 96,
-    height: 96,
+  blobMid: {
+    width: 360, height: 360, top: 180, left: -140,
+    backgroundColor: 'rgba(130,80,223,0.38)', // violet glow
+  },
+  blobBottom: {
+    width: 460, height: 460, bottom: -180, right: -80,
+    backgroundColor: 'rgba(14,165,233,0.30)', // cyan glow
+  },
+
+  scroll: { flexGrow: 1, justifyContent: 'center', padding: theme.spacing.xl, gap: theme.spacing.xl },
+
+  // --- Header + clay logo badge ---
+  header: { alignItems: 'center', gap: theme.spacing.md },
+  logoClay: {
+    width: 104, height: 104, borderRadius: 34,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)',
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 14 }, shadowOpacity: 0.3, shadowRadius: 24, elevation: 12,
+  },
+  logoInner: {
+    width: 76, height: 76, borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#0b1726', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.18, shadowRadius: 10, elevation: 4,
+  },
+  logo: { width: 46, height: 46, tintColor: theme.color.primary },
+  brand: { fontSize: theme.fontSize.display, fontWeight: '800', color: '#ffffff', letterSpacing: 0.3 },
+  brandPill: {
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.28)',
     borderRadius: theme.radius.pill,
-    backgroundColor: theme.color.accentSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...theme.shadow.card,
+    paddingHorizontal: theme.spacing.md, paddingVertical: 4,
   },
-  logo: { width: 56, height: 56, tintColor: theme.color.primary },
-  brand: { fontSize: theme.fontSize.display, fontWeight: '800', color: theme.color.text, letterSpacing: 0.3 },
   brandSub: {
-    fontSize: theme.fontSize.label,
-    color: theme.color.primary,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 1.5,
+    fontSize: theme.fontSize.caption, color: '#ffffff', fontWeight: '700',
+    textTransform: 'uppercase', letterSpacing: 2,
   },
-  card: {
-    backgroundColor: theme.color.surface,
-    borderRadius: theme.radius.xl,
+
+  // --- Frosted glass card ---
+  glassCard: {
+    backgroundColor: 'rgba(255,255,255,0.90)',
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.6)',
     padding: theme.spacing.xl,
     gap: theme.spacing.md,
-    ...theme.shadow.card,
+    shadowColor: '#030712', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.35, shadowRadius: 30, elevation: 16,
   },
-  cardTitle: { fontSize: theme.fontSize.title, fontWeight: '700', color: theme.color.text },
-  cardSubtitle: { fontSize: theme.fontSize.body, color: theme.color.mutedText, marginBottom: theme.spacing.sm },
+  cardTitle: { fontSize: theme.fontSize.title, fontWeight: '800', color: theme.color.text },
+  cardSubtitle: { fontSize: theme.fontSize.body, color: theme.color.mutedText, marginBottom: theme.spacing.xs },
+
+  // --- Neumorphic field well ---
+  fieldWell: {
+    backgroundColor: '#eef1f8',
+    borderRadius: theme.radius.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.8)',
+    padding: theme.spacing.md,
+    gap: theme.spacing.md,
+    // Soft inset-ish feel: a subtle outer shadow so the well reads as a soft extruded surface.
+    shadowColor: '#aeb7cc', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.5, shadowRadius: 12, elevation: 2,
+  },
+
   forgotRow: { alignItems: 'flex-end', marginTop: -theme.spacing.xs, marginBottom: theme.spacing.xs },
-  footer: { textAlign: 'center', color: theme.color.mutedText, fontSize: theme.fontSize.label },
+  footer: { textAlign: 'center', color: 'rgba(255,255,255,0.7)', fontSize: theme.fontSize.label },
 });

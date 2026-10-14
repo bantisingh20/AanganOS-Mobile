@@ -3,7 +3,6 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { TopBar } from '../ui/TopBar';
 import { BottomTabBar, type TabKey } from '../ui/BottomTabBar';
-import { QuickActionCard } from '../ui/QuickActionCard';
 import { StatChip } from '../ui/StatChip';
 import { SectionHeading } from '../ui/SectionHeading';
 import { theme } from '../ui/theme';
@@ -12,6 +11,7 @@ import { useNavStack } from '../ui/navStack';
 import { useAuth } from '../auth/AuthContext';
 import { LogoutButton } from '../screens/LogoutButton';
 import { hasAdminRole, hasSecurityRole, hasResidentRole } from './shared/roles';
+import { NotificationsScreen } from './shared/NotificationsScreen';
 import type { ResourceClients, GateOfflineQueue } from '../resources';
 import type { Community, Unit } from '../models/community';
 import { CommunityListScreen } from './admin/CommunityListScreen';
@@ -121,6 +121,14 @@ export function HomeNavigator({ resources, isAdmin = false, appTitle, offlineQue
   const myName = meQuery.data?.resident?.name;
   const userName = myName ?? displayName ?? 'Signed in';
 
+  // Unread notification count for the top-bar bell. Reloaded on tab/route change (cheap count call)
+  // so it refreshes after the user reads notifications or a new one arrives between navigations.
+  const unreadQuery = useAsync(
+    (signal) => resources.notifications.unreadCount({ signal }).catch(() => 0),
+    [resources, route.name],
+  );
+  const unreadCount = unreadQuery.data ?? 0;
+
   // Only the top route renders. Feature detail screens render full-screen (their own back → pop).
   switch (route.name) {
     case 'communities':
@@ -196,6 +204,8 @@ export function HomeNavigator({ resources, isAdmin = false, appTitle, offlineQue
       return <MyVisitorsScreen resources={resources} onBack={back} />;
     case 'walkInApprovals':
       return <WalkInApprovalsScreen resources={resources} onBack={back} />;
+    case 'notifications':
+      return <NotificationsScreen resources={resources} onBack={back} />;
     case 'recurringVisitors':
       return <RecurringVisitorsScreen resources={resources} onBack={back} />;
     case 'myParcels':
@@ -252,7 +262,12 @@ export function HomeNavigator({ resources, isAdmin = false, appTitle, offlineQue
       const tab = route.tab;
       return (
         <View style={styles.shell}>
-          <TopBar title={societyName} subtitle={userName} notificationCount={0} />
+          <TopBar
+            title={societyName}
+            subtitle={userName}
+            notificationCount={unreadCount}
+            onPressNotifications={() => go({ name: 'notifications' })}
+          />
           <View style={styles.body}>
             {tab === 'home' ? (
               <DashboardTab isResident={isResident} isSecurity={isSecurity} userName={userName} onNavigate={go} onOpenServices={() => setTab('services')} />
@@ -264,6 +279,9 @@ export function HomeNavigator({ resources, isAdmin = false, appTitle, offlineQue
                 appTitle={appTitle}
                 societyName={societyName}
                 roles={roles}
+                isAdmin={isAdminRole}
+                isSecurity={isSecurity}
+                onOpenNotifications={() => go({ name: 'notifications' })}
                 {...(isResidentPrincipal ? { onManageProfile: () => go({ name: 'myProfile' }) } : {})}
               />
             )}
@@ -299,6 +317,7 @@ type Route =
   | { name: 'inviteVisitor' }
   | { name: 'myVisitors' }
   | { name: 'walkInApprovals' }
+  | { name: 'notifications' }
   | { name: 'recurringVisitors' }
   | { name: 'myParcels' }
   | { name: 'raiseTicket' }
@@ -381,6 +400,7 @@ function guardGroups(): FeatureGroup[] {
       features: [
         { route: { name: 'verifyPass' }, label: 'Verify Pass', subtitle: 'Scan or enter a visitor pass code', icon: 'qr-code', tint: '#1a7f37' },
         { route: { name: 'walkInCapture' }, label: 'Walk-in', subtitle: 'Register an unexpected visitor', icon: 'person-add', tint: '#bf8700' },
+        { route: { name: 'walkInApprovals' }, label: 'Walk-in Status', subtitle: 'See walk-ins & if approved', icon: 'people', tint: '#0969da' },
         { route: { name: 'entryExit' }, label: 'Entry / Exit', subtitle: 'Record who comes and goes', icon: 'swap-horizontal', tint: '#0969da' },
         { route: { name: 'watchlist' }, label: 'Watchlist', subtitle: 'Flagged people and vehicles', icon: 'alert-circle', tint: '#cf222e' },
       ],
@@ -510,21 +530,26 @@ function DashboardTab({
         </View>
       </View>
 
-      {/* Quick actions */}
+      {/* Quick actions — a 2-column tile grid (modern dashboard look vs. the old stacked rows). */}
       <View style={styles.sectionRow}>
         <SectionHeading title="Quick actions" />
       </View>
-      <View style={styles.actionList}>
+      <View style={styles.quickGrid}>
         {quick.map((a) => (
-          <QuickActionCard
+          <Pressable
             key={a.title}
-            title={a.title}
-            subtitle={a.subtitle}
-            icon={a.icon}
-            tint={a.tint}
             onPress={() => onNavigate(a.route)}
+            accessibilityRole="button"
+            accessibilityLabel={a.title}
             accessibilityHint={`Open ${a.title}`}
-          />
+            style={({ pressed }) => [styles.quickTile, pressed ? styles.quickTilePressed : null]}
+          >
+            <View style={[styles.quickTileBadge, { backgroundColor: `${a.tint}1f` }]}>
+              <Ionicons name={a.icon} size={24} color={a.tint} />
+            </View>
+            <Text style={styles.quickTileTitle} numberOfLines={2}>{a.title}</Text>
+            <Text style={styles.quickTileSub} numberOfLines={2}>{a.subtitle}</Text>
+          </Pressable>
         ))}
       </View>
 
@@ -667,68 +692,115 @@ function ProfileRow({
   return body;
 }
 
-/** Profile tab: a modern profile page — hero header, account card, settings list, logout. */
+/** Per-role identity used in the profile hero (icon, chip label, accent). */
+function roleIdentity(isAdmin: boolean, isSecurity: boolean): {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  tint: string;
+} {
+  if (isAdmin) return { icon: 'ribbon', label: 'Administrator', tint: '#8250df' };
+  if (isSecurity) return { icon: 'shield-half', label: 'Security', tint: theme.color.info };
+  return { icon: 'home', label: 'Resident', tint: theme.color.success };
+}
+
+/**
+ * Profile tab — one shared screen for resident / security / admin, styled in the app's
+ * glass + clay + neumorphism language (same as the login screen). The hero adapts its badge,
+ * accent and role label per role; the resident "Manage" card only shows when `onManageProfile`
+ * is passed. Pure RN (no blur/gradient deps) so it reloads over JS with no native rebuild.
+ */
 function ProfileTab({
   userName,
   appTitle,
   societyName,
   roles,
+  isAdmin,
+  isSecurity,
   onManageProfile,
+  onOpenNotifications,
 }: {
   userName: string;
   appTitle: string;
   societyName: string;
   roles: readonly string[];
+  isAdmin: boolean;
+  isSecurity: boolean;
   onManageProfile?: () => void;
+  onOpenNotifications?: () => void;
 }) {
   const roleLabel = roles.length > 0 ? roles.join(', ') : appTitle;
+  const ident = roleIdentity(isAdmin, isSecurity);
+  const quickActions: { icon: keyof typeof Ionicons.glyphMap; label: string; tint: string; onPress: () => void }[] = [
+    { icon: 'notifications', label: 'Alerts', tint: theme.color.warning, onPress: onOpenNotifications ?? (() => {}) },
+    ...(onManageProfile ? [{ icon: 'create' as const, label: 'Edit', tint: theme.color.primary, onPress: onManageProfile }] : []),
+    { icon: 'lock-closed', label: 'Security', tint: theme.color.danger, onPress: () => {} },
+    { icon: 'help-buoy', label: 'Help', tint: theme.color.info, onPress: () => {} },
+  ];
   return (
-    <ScrollView contentContainerStyle={styles.tabContent} showsVerticalScrollIndicator={false}>
-      {/* Hero header */}
-      <View style={styles.profileHero}>
-        <View style={styles.heroBlobA} />
-        <View style={styles.heroBlobB} />
-        <View style={styles.profileAvatar}>
-          <Text style={styles.profileInitials}>{initialsOf(userName)}</Text>
-        </View>
-        <Text style={styles.profileHeroName} numberOfLines={1}>{userName}</Text>
-        <View style={styles.roleChip}>
-          <Ionicons name="shield-checkmark" size={13} color={theme.color.primaryText} />
-          <Text style={styles.roleChipText} numberOfLines={1}>{roleLabel}</Text>
-        </View>
+    <ScrollView contentContainerStyle={styles.pScroll} showsVerticalScrollIndicator={false}>
+      {/* Full-bleed banner: coloured role wash + blobs, avatar sits half-overlapping the card below. */}
+      <View style={[styles.pBanner, { backgroundColor: ident.tint }]}>
+        <View style={styles.pBannerBlobA} />
+        <View style={styles.pBannerBlobB} />
       </View>
 
-      {/* Account card */}
-      <Text style={styles.pSection}>Account</Text>
-      <View style={styles.pCard}>
-        <ProfileRow icon="person-outline" label="Signed in as" value={userName} tint={theme.color.primary} />
-        <ProfileRow icon="business-outline" label="Community" value={societyName} tint={theme.color.info} />
-        <ProfileRow icon="ribbon-outline" label="Role" value={roleLabel} tint={theme.color.success} last />
-      </View>
-
-      {/* Manage (resident self-service) */}
-      {onManageProfile ? (
-        <>
-          <Text style={styles.pSection}>Manage</Text>
-          <View style={styles.pCard}>
-            <ProfileRow icon="person-circle-outline" label="Profile & household" value="Contact details, family, vehicles" tint={theme.color.primary} onPress={onManageProfile} last />
+      {/* Floating identity card that overlaps the banner (distinct overlapping-card layout). */}
+      <View style={styles.pIdentityWrap}>
+        <View style={styles.pAvatarClay}>
+          <View style={styles.profileAvatar}>
+            <Text style={styles.profileInitials}>{initialsOf(userName)}</Text>
           </View>
-        </>
-      ) : null}
+          <View style={[styles.pAvatarBadge, { backgroundColor: ident.tint }]}>
+            <Ionicons name={ident.icon} size={14} color={theme.color.primaryText} />
+          </View>
+        </View>
+        <View style={styles.pIdentityCard}>
+          <View style={styles.pAvatarSpacer} />
+          <Text style={styles.pIdName} numberOfLines={1}>{userName}</Text>
+          <View style={[styles.pIdRolePill, { backgroundColor: `${ident.tint}1f` }]}>
+            <Ionicons name={ident.icon} size={13} color={ident.tint} />
+            <Text style={[styles.pIdRoleText, { color: ident.tint }]} numberOfLines={1}>{ident.label}</Text>
+          </View>
+          <View style={styles.pIdCommunity}>
+            <Ionicons name="business" size={13} color={theme.color.mutedText} />
+            <Text style={styles.pIdCommunityText} numberOfLines={1}>{societyName}</Text>
+          </View>
 
-      {/* Settings list */}
-      <Text style={styles.pSection}>Settings</Text>
-      <View style={styles.pCard}>
-        <ProfileRow icon="notifications-outline" label="Notifications" value="Push & alerts" tint={theme.color.warning} onPress={() => {}} />
-        <ProfileRow icon="lock-closed-outline" label="Security" value="Password & sessions" tint={theme.color.danger} onPress={() => {}} />
-        <ProfileRow icon="help-circle-outline" label="Help & support" tint={theme.color.info} onPress={() => {}} last />
+          {/* Horizontal quick-action chips (new element — not in the old list design). */}
+          <View style={styles.pQuickRow}>
+            {quickActions.map((a) => (
+              <Pressable
+                key={a.label}
+                onPress={a.onPress}
+                accessibilityRole="button"
+                accessibilityLabel={a.label}
+                style={({ pressed }) => [styles.pQuick, pressed ? styles.pQuickPressed : null]}
+              >
+                <View style={[styles.pQuickIcon, { backgroundColor: `${a.tint}1f` }]}>
+                  <Ionicons name={a.icon} size={20} color={a.tint} />
+                </View>
+                <Text style={styles.pQuickLabel} numberOfLines={1}>{a.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
       </View>
 
-      {/* Logout */}
-      <View style={styles.pLogout}>
-        <LogoutButton title="Log out" variant="secondary" />
+      {/* Account info only (read-only). The actionable items live in the quick-action chips above,
+          so we don't repeat Notifications/Security/Help/Manage as a second list here. */}
+      <View style={styles.pBody}>
+        <Text style={styles.pSection}>Account</Text>
+        <View style={styles.pCard}>
+          <ProfileRow icon="person-outline" label="Signed in as" value={userName} tint={theme.color.primary} />
+          <ProfileRow icon="ribbon-outline" label="Role" value={roleLabel} tint={ident.tint} />
+          <ProfileRow icon="business-outline" label="Community" value={societyName} tint={theme.color.info} last />
+        </View>
+
+        <View style={styles.pLogout}>
+          <LogoutButton title="Log out" variant="secondary" />
+        </View>
+        <Text style={styles.pVersion}>CommunityOS · {appTitle} · v0.1.0</Text>
       </View>
-      <Text style={styles.pVersion}>CommunityOS · {appTitle} · v0.1.0</Text>
     </ScrollView>
   );
 }
@@ -772,6 +844,33 @@ const styles = StyleSheet.create({
   statsRow: { flexDirection: 'row', gap: theme.spacing.sm, marginTop: theme.spacing.lg },
   sectionRow: { marginTop: theme.spacing.sm },
   actionList: { gap: theme.spacing.md },
+  // 2-column quick-action grid: each tile is ~half width, wraps to the next row.
+  quickGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    rowGap: theme.spacing.md,
+  },
+  quickTile: {
+    width: '48.5%',
+    backgroundColor: theme.color.surface,
+    borderRadius: theme.radius.lg,
+    padding: theme.spacing.lg,
+    gap: theme.spacing.xs,
+    minHeight: 128,
+    ...theme.shadow.soft,
+  },
+  quickTilePressed: { opacity: 0.9, transform: [{ scale: 0.98 }] },
+  quickTileBadge: {
+    width: 48,
+    height: 48,
+    borderRadius: theme.radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: theme.spacing.xs,
+  },
+  quickTileTitle: { fontSize: theme.fontSize.body, fontWeight: '800', color: theme.color.text },
+  quickTileSub: { fontSize: theme.fontSize.caption, color: theme.color.mutedText, lineHeight: 16 },
   exploreCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -809,40 +908,124 @@ const styles = StyleSheet.create({
   serviceText: { flex: 1, gap: 2 },
   serviceLabel: { fontSize: theme.fontSize.body, fontWeight: '700', color: theme.color.text },
   serviceSubtitle: { fontSize: theme.fontSize.caption, color: theme.color.mutedText },
-  // --- Profile page ---
-  profileHero: {
-    backgroundColor: theme.color.hero,
-    borderRadius: theme.radius.xl,
-    paddingVertical: theme.spacing.xl,
+  // --- Profile page (banner + overlapping identity card + quick actions) ---
+  pScroll: { paddingBottom: theme.spacing.xxl },
+  // Full-bleed role-coloured banner at the very top; the identity card overlaps its lower edge.
+  pBanner: {
+    height: 150,
+    borderBottomLeftRadius: theme.radius.xl,
+    borderBottomRightRadius: theme.radius.xl,
+    overflow: 'hidden',
+  },
+  pBannerBlobA: {
+    position: 'absolute',
+    top: -50,
+    right: -30,
+    width: 170,
+    height: 170,
+    borderRadius: 85,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+  },
+  pBannerBlobB: {
+    position: 'absolute',
+    bottom: -60,
+    left: -20,
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    backgroundColor: 'rgba(0,0,0,0.12)',
+  },
+  // Wrapper pulls the card up over the banner; the avatar floats on top of the card edge.
+  pIdentityWrap: {
+    marginTop: -72,
     paddingHorizontal: theme.spacing.lg,
     alignItems: 'center',
-    gap: theme.spacing.sm,
-    overflow: 'hidden',
-    ...theme.shadow.hero,
+  },
+  // Clay avatar sits above the card, z-ordered on top (zIndex) so it overlaps the white edge.
+  pAvatarClay: {
+    width: 104,
+    height: 104,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.color.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+    shadowColor: '#0b1726',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.22,
+    shadowRadius: 14,
+    elevation: 8,
   },
   profileAvatar: {
     width: 88,
     height: 88,
     borderRadius: theme.radius.pill,
-    backgroundColor: theme.color.onHeroSoft,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.35)',
+    backgroundColor: theme.color.accentSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  profileInitials: { fontSize: theme.fontSize.display, fontWeight: '800', color: theme.color.primaryText },
-  profileHeroName: { fontSize: theme.fontSize.heading, fontWeight: '800', color: theme.color.primaryText },
-  roleChip: {
+  pAvatarBadge: {
+    position: 'absolute',
+    right: 4,
+    bottom: 4,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: theme.color.surface,
+  },
+  profileInitials: { fontSize: theme.fontSize.display, fontWeight: '800', color: theme.color.primary },
+  // White floating identity card, pulled up under the avatar.
+  pIdentityCard: {
+    marginTop: -52,
+    width: '100%',
+    backgroundColor: theme.color.surface,
+    borderRadius: theme.radius.xl,
+    paddingTop: 60,
+    paddingBottom: theme.spacing.lg,
+    paddingHorizontal: theme.spacing.lg,
+    alignItems: 'center',
+    gap: theme.spacing.xs,
+    ...theme.shadow.card,
+  },
+  pAvatarSpacer: { height: 0 },
+  pIdName: { fontSize: theme.fontSize.title, fontWeight: '800', color: theme.color.text, textAlign: 'center' },
+  pIdRolePill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: theme.color.onHeroSoft,
     borderRadius: theme.radius.pill,
-    paddingVertical: 6,
+    paddingVertical: 5,
     paddingHorizontal: theme.spacing.md,
-    maxWidth: '90%',
+    marginTop: 2,
   },
-  roleChipText: { color: theme.color.primaryText, fontSize: theme.fontSize.caption, fontWeight: '700' },
+  pIdRoleText: { fontSize: theme.fontSize.caption, fontWeight: '800' },
+  pIdCommunity: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
+  pIdCommunityText: { fontSize: theme.fontSize.caption, color: theme.color.mutedText, fontWeight: '600', flexShrink: 1 },
+  // Quick-action chips row across the bottom of the identity card.
+  pQuickRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignSelf: 'stretch',
+    marginTop: theme.spacing.md,
+    paddingTop: theme.spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: theme.color.border,
+  },
+  pQuick: { alignItems: 'center', gap: 6, flex: 1 },
+  pQuickPressed: { opacity: 0.6 },
+  pQuickIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: theme.radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pQuickLabel: { fontSize: theme.fontSize.caption, color: theme.color.text, fontWeight: '700' },
+  // Below-card content gets the usual page padding.
+  pBody: { paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md, gap: theme.spacing.md },
   pSection: {
     fontSize: theme.fontSize.caption,
     fontWeight: '800',
@@ -852,11 +1035,14 @@ const styles = StyleSheet.create({
     marginTop: theme.spacing.md,
     marginLeft: theme.spacing.xs,
   },
+  // Neumorphic card: soft extruded surface with a hairline light border.
   pCard: {
     backgroundColor: theme.color.surface,
     borderRadius: theme.radius.lg,
     paddingHorizontal: theme.spacing.lg,
-    ...theme.shadow.soft,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.9)',
+    ...theme.shadow.card,
   },
   pRow: {
     flexDirection: 'row',

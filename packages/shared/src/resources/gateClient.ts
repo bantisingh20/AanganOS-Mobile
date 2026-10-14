@@ -23,6 +23,9 @@ export interface VisitorListFilters {
   readonly status?: string;
   readonly category?: string;
   readonly hostUnitId?: string;
+  /** Registered-date window (ISO). Scopes the walk-in list to a day/range (createdAtUtc >= / <=). */
+  readonly fromDate?: string;
+  readonly toDate?: string;
 }
 
 /** Extra server-side filters for the recurring-visitor list (Req 25.2). */
@@ -197,6 +200,8 @@ export class GateClient {
       status: filters.status,
       category: filters.category,
       hostUnitId: filters.hostUnitId,
+      fromDate: filters.fromDate,
+      toDate: filters.toDate,
     });
     return this.api.get<PagedData<Visitor>>(`/api/v1/visitors${qs}`, options);
   }
