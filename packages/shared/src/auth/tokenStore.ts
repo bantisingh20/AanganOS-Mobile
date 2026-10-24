@@ -45,6 +45,13 @@ const DISPLAY_NAME_KEY = 'communityos.displayName';
  * input fails closed to null (never throws into the UI).
  */
 function readJwtSubject(token: string): string | null {
+  const claims = readJwtClaims(token);
+  const sub = claims?.['sub'];
+  return typeof sub === 'string' && sub.length > 0 ? sub : null;
+}
+
+/** Decode a JWT payload to a claims object (no signature verification). Null on malformed input. */
+function readJwtClaims(token: string): Record<string, unknown> | null {
   const parts = token.split('.');
   const payloadPart = parts[1];
   if (parts.length !== 3 || !payloadPart) {
@@ -54,11 +61,20 @@ function readJwtSubject(token: string): string | null {
     const payload = payloadPart.replace(/-/g, '+').replace(/_/g, '/');
     const padded = payload.padEnd(payload.length + ((4 - (payload.length % 4)) % 4), '=');
     const json = decodeBase64(padded);
-    const claims = JSON.parse(json) as { sub?: unknown };
-    return typeof claims.sub === 'string' && claims.sub.length > 0 ? claims.sub : null;
+    return JSON.parse(json) as Record<string, unknown>;
   } catch {
     return null;
   }
+}
+
+/**
+ * True when the token belongs to a platform power user / super-admin (claim
+ * `communityos:is_platform_super_admin === "true"`). These accounts manage the system via the web
+ * admin portal, NOT the resident/guard mobile app, so the app rejects such a login.
+ */
+export function isPlatformSuperAdminToken(token: string): boolean {
+  const claims = readJwtClaims(token);
+  return claims?.['communityos:is_platform_super_admin'] === 'true';
 }
 
 /** Decode a standard base64 string to a UTF-8 string across RN/Hermes (atob) and Node (Buffer). */

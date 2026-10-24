@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { TopBar } from '../ui/TopBar';
@@ -270,7 +270,18 @@ export function HomeNavigator({ resources, isAdmin = false, appTitle, offlineQue
           />
           <View style={styles.body}>
             {tab === 'home' ? (
-              <DashboardTab isResident={isResident} isSecurity={isSecurity} userName={userName} onNavigate={go} onOpenServices={() => setTab('services')} />
+              <DashboardTab
+                isResident={isResident}
+                isSecurity={isSecurity}
+                userName={userName}
+                societyName={societyName}
+                unitLabel={meQuery.data?.units?.[0]?.unitNumber ?? null}
+                unreadCount={unreadCount}
+                onNavigate={go}
+                onOpenServices={() => setTab('services')}
+                onOpenNotifications={() => go({ name: 'notifications' })}
+                onOpenProfile={() => setTab('profile')}
+              />
             ) : tab === 'services' ? (
               <ServicesTab isResident={isResident} isSecurity={isSecurity} isAdmin={isAdminRole} onNavigate={go} />
             ) : (
@@ -469,86 +480,150 @@ function todayLabel(): string {
   }
 }
 
-/** Home tab: a modern dashboard — a dark hero with stat chips, then rich quick-action cards. */
+/**
+ * Home tab — society-app dashboard (reference image 1): a blue gradient header card holding the
+ * profile (avatar + name + unit), SOS + notification bell, and a Community/Personal segmented tab,
+ * over a clean 2-column grid of feature tiles. "Community" shows community features; "Personal"
+ * shows the resident's own-account tiles.
+ */
 function DashboardTab({
   isResident,
   isSecurity,
   userName,
+  societyName,
+  unitLabel,
+  unreadCount,
   onNavigate,
   onOpenServices,
+  onOpenNotifications,
+  onOpenProfile,
 }: {
   isResident: boolean;
   isSecurity: boolean;
   userName: string;
+  societyName: string;
+  unitLabel: string | null;
+  unreadCount: number;
   onNavigate: (r: Route) => void;
   onOpenServices: () => void;
+  onOpenNotifications: () => void;
+  onOpenProfile: () => void;
 }) {
-  // Quick actions by role (a user can be both a resident and a guard). Guard actions come first for
-  // a guard-only login; a resident sees resident actions. Capped so the dashboard stays scannable.
-  const quick: QuickAction[] = useMemo(() => {
-    const residentQuick: QuickAction[] = [
-      { route: { name: 'inviteVisitor' }, title: 'Invite a Visitor', subtitle: 'Share a QR pass with your guest', icon: 'person-add', tint: theme.color.success },
-      { route: { name: 'raiseTicket' }, title: 'Raise a Ticket', subtitle: 'Report an issue for your unit', icon: 'create', tint: theme.color.danger },
-      { route: { name: 'myParcels' }, title: 'My Parcels', subtitle: 'Track deliveries & handovers', icon: 'cube', tint: theme.color.warning },
-      { route: { name: 'announcements' }, title: 'Announcements', subtitle: 'Community notices & updates', icon: 'megaphone', tint: '#8250df' },
+  const [segment, setSegment] = useState<'community' | 'personal'>('community');
+
+  // Community tiles: role-aware (guard gate ops first, then resident features). Personal tiles:
+  // the resident's own-account actions. Each tile is an icon + label in the image-1 grid style.
+  const communityTiles: DashTile[] = useMemo(() => {
+    const guard: DashTile[] = [
+      { route: { name: 'verifyPass' }, label: 'Verify Pass', icon: 'qr-code', tint: '#2563eb' },
+      { route: { name: 'walkInCapture' }, label: 'Register Walk-in', icon: 'person-add', tint: '#0ea5e9' },
+      { route: { name: 'entryExit' }, label: 'Entry / Exit', icon: 'swap-horizontal', tint: '#16a34a' },
+      { route: { name: 'registerParcel' }, label: 'Register Parcel', icon: 'cube', tint: '#d97706' },
+      { route: { name: 'walkInApprovals' }, label: 'Walk-in Status', icon: 'people', tint: '#8250df' },
+      { route: { name: 'watchlist' }, label: 'Watchlist', icon: 'shield-checkmark', tint: '#dc2626' },
     ];
-    const guardQuick: QuickAction[] = [
-      { route: { name: 'verifyPass' }, title: 'Verify a Pass', subtitle: 'Scan QR or enter OTP at the gate', icon: 'qr-code', tint: theme.color.success },
-      { route: { name: 'walkInCapture' }, title: 'Register Walk-in', subtitle: 'Capture a visitor & request approval', icon: 'person-add', tint: theme.color.info },
-      { route: { name: 'registerParcel' }, title: 'Register a Parcel', subtitle: 'Log a delivery & notify resident', icon: 'cube', tint: theme.color.warning },
-      { route: { name: 'sos' }, title: 'SOS', subtitle: 'Raise or manage an emergency alert', icon: 'warning', tint: theme.color.danger },
+    const resident: DashTile[] = [
+      { route: { name: 'inviteVisitor' }, label: 'Visitors', icon: 'person-add', tint: '#2563eb' },
+      { route: { name: 'myVisitors' }, label: 'My Visitors', icon: 'people', tint: '#8250df' },
+      { route: { name: 'announcements' }, label: 'Notices', icon: 'megaphone', tint: '#0ea5e9' },
+      { route: { name: 'raiseTicket' }, label: 'Help Desk', icon: 'chatbubble-ellipses', tint: '#16a34a' },
+      { route: { name: 'myParcels' }, label: 'Parcels', icon: 'cube', tint: '#d97706' },
+      { route: { name: 'recurringVisitors' }, label: 'Daily Help', icon: 'repeat', tint: '#db2777' },
     ];
-    const list = [...(isSecurity ? guardQuick : []), ...(isResident ? residentQuick : [])];
-    return list.slice(0, 4);
+    return [...(isSecurity ? guard : []), ...(isResident ? resident : [])];
   }, [isResident, isSecurity]);
 
-  const stats = isSecurity && !isResident
-    ? [
-        { icon: 'walk' as const, value: '—', label: 'On-site' },
-        { icon: 'cube' as const, value: '—', label: 'Parcels' },
-        { icon: 'alert-circle' as const, value: '—', label: 'Alerts' },
-      ]
-    : [
-        { icon: 'cube' as const, value: '—', label: 'Parcels' },
-        { icon: 'people' as const, value: '—', label: 'Visitors' },
-        { icon: 'construct' as const, value: '—', label: 'Tickets' },
-      ];
+  const personalTiles: DashTile[] = useMemo(
+    () => [
+      { route: { name: 'myProfile' }, label: 'My Profile', icon: 'person-circle', tint: '#2563eb' },
+      { route: { name: 'myHousehold' }, label: 'My Household', icon: 'home', tint: '#16a34a' },
+      { route: { name: 'myVisitors' }, label: 'My Visitors', icon: 'people', tint: '#8250df' },
+      { route: { name: 'myParcels' }, label: 'My Parcels', icon: 'cube', tint: '#d97706' },
+      { route: { name: 'notifications' }, label: 'Notifications', icon: 'notifications', tint: '#0ea5e9' },
+      { route: { name: 'commPrefs' }, label: 'Preferences', icon: 'options', tint: '#64748b' },
+    ],
+    [],
+  );
+
+  // Personal tab only makes sense for a resident principal; a guard-only login stays on Community.
+  const showPersonal = isResident;
+  const tiles = segment === 'personal' && showPersonal ? personalTiles : communityTiles;
 
   return (
-    <ScrollView contentContainerStyle={styles.tabContent} showsVerticalScrollIndicator={false}>
-      {/* Hero */}
-      <View style={styles.hero}>
-        <View style={styles.heroBlobA} />
-        <View style={styles.heroBlobB} />
-        <Text style={styles.heroHi}>{greeting()},</Text>
-        <Text style={styles.heroName} numberOfLines={1}>{userName}</Text>
-        <Text style={styles.heroDate}>{todayLabel()}</Text>
-        <View style={styles.statsRow}>
-          {stats.map((s) => (
-            <StatChip key={s.label} icon={s.icon} value={s.value} label={s.label} />
-          ))}
+    <ScrollView contentContainerStyle={styles.dashScroll} showsVerticalScrollIndicator={false}>
+      {/* Blue gradient header card (reference image 1). */}
+      <View style={styles.dashHeader}>
+        <View style={styles.dashHeaderBlobA} />
+        <View style={styles.dashHeaderBlobB} />
+
+        <View style={styles.dashHeaderTop}>
+          <Text style={styles.dashBrand}>SOCIETY APP</Text>
+          <View style={styles.dashHeaderIcons}>
+            {/* SOS is a guard gate operation (needs Create SosAlert) — only security can raise it.
+                Residents don't have that permission, so the button is security-only. */}
+            {isSecurity ? (
+              <Pressable
+                onPress={() => onNavigate({ name: 'sos' })}
+                accessibilityRole="button"
+                accessibilityLabel="SOS emergency"
+                hitSlop={8}
+                style={styles.dashIconBtn}
+              >
+                <Text style={styles.dashSosText}>SOS</Text>
+              </Pressable>
+            ) : null}
+            <Pressable
+              onPress={onOpenNotifications}
+              accessibilityRole="button"
+              accessibilityLabel={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ''}`}
+              hitSlop={8}
+              style={styles.dashIconBtn}
+            >
+              <Ionicons name="notifications" size={18} color="#fff" />
+              {unreadCount > 0 ? (
+                <View style={styles.dashBadge}>
+                  <Text style={styles.dashBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+                </View>
+              ) : null}
+            </Pressable>
+          </View>
         </View>
+
+        <Pressable style={styles.dashProfileRow} onPress={onOpenProfile} accessibilityRole="button" accessibilityLabel="Open profile">
+          <View style={styles.dashAvatar}>
+            <Text style={styles.dashInitials}>{initialsOf(userName)}</Text>
+          </View>
+          <View style={styles.dashProfileText}>
+            <Text style={styles.dashName} numberOfLines={1}>{userName}</Text>
+            <Text style={styles.dashUnit} numberOfLines={1}>
+              {unitLabel ? `${unitLabel} · ` : ''}{societyName}
+            </Text>
+          </View>
+        </Pressable>
+
+        {/* Community / Personal segmented tabs (inside the header card). */}
+        {showPersonal ? (
+          <View style={styles.dashTabs}>
+            <DashTab label="Community" active={segment === 'community'} onPress={() => setSegment('community')} />
+            <DashTab label="Personal" active={segment === 'personal'} onPress={() => setSegment('personal')} />
+          </View>
+        ) : null}
       </View>
 
-      {/* Quick actions — a 2-column tile grid (modern dashboard look vs. the old stacked rows). */}
-      <View style={styles.sectionRow}>
-        <SectionHeading title="Quick actions" />
-      </View>
-      <View style={styles.quickGrid}>
-        {quick.map((a) => (
+      {/* Feature tile grid. */}
+      <View style={styles.dashGrid}>
+        {tiles.map((t) => (
           <Pressable
-            key={a.title}
-            onPress={() => onNavigate(a.route)}
+            key={`${t.label}-${t.route.name}`}
+            onPress={() => onNavigate(t.route)}
             accessibilityRole="button"
-            accessibilityLabel={a.title}
-            accessibilityHint={`Open ${a.title}`}
-            style={({ pressed }) => [styles.quickTile, pressed ? styles.quickTilePressed : null]}
+            accessibilityLabel={t.label}
+            style={({ pressed }) => [styles.dashTile, pressed ? styles.dashTilePressed : null]}
           >
-            <View style={[styles.quickTileBadge, { backgroundColor: `${a.tint}1f` }]}>
-              <Ionicons name={a.icon} size={24} color={a.tint} />
+            <View style={[styles.dashTileIcon, { backgroundColor: `${t.tint}1a` }]}>
+              <Ionicons name={t.icon} size={26} color={t.tint} />
             </View>
-            <Text style={styles.quickTileTitle} numberOfLines={2}>{a.title}</Text>
-            <Text style={styles.quickTileSub} numberOfLines={2}>{a.subtitle}</Text>
+            <Text style={styles.dashTileLabel} numberOfLines={2}>{t.label}</Text>
           </Pressable>
         ))}
       </View>
@@ -565,11 +640,33 @@ function DashboardTab({
         </View>
         <View style={styles.exploreText}>
           <Text style={styles.exploreTitle}>Explore all services</Text>
-          <Text style={styles.exploreSub}>Visitors, parcels, helpdesk & more</Text>
+          <Text style={styles.exploreSub}>Everything you can do, in one place</Text>
         </View>
         <Ionicons name="arrow-forward" size={20} color={theme.color.primary} />
       </Pressable>
     </ScrollView>
+  );
+}
+
+/** One feature tile descriptor for the dashboard grid. */
+interface DashTile {
+  route: Route;
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  tint: string;
+}
+
+/** A segmented tab inside the gradient header (Community / Personal). */
+function DashTab({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="tab"
+      accessibilityState={{ selected: active }}
+      style={[styles.dashTab, active ? styles.dashTabActive : null]}
+    >
+      <Text style={[styles.dashTabText, active ? styles.dashTabTextActive : null]}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -844,6 +941,74 @@ const styles = StyleSheet.create({
   statsRow: { flexDirection: 'row', gap: theme.spacing.sm, marginTop: theme.spacing.lg },
   sectionRow: { marginTop: theme.spacing.sm },
   actionList: { gap: theme.spacing.md },
+  // --- Dashboard (society-app, reference image 1) ---
+  dashScroll: { padding: theme.spacing.lg, gap: theme.spacing.lg, paddingBottom: theme.spacing.xxl },
+  dashHeader: {
+    backgroundColor: theme.color.primary,
+    borderRadius: theme.radius.xl,
+    padding: theme.spacing.lg,
+    gap: theme.spacing.md,
+    overflow: 'hidden',
+    ...theme.shadow.hero,
+  },
+  dashHeaderBlobA: {
+    position: 'absolute', top: -50, right: -30, width: 160, height: 160, borderRadius: 80,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  dashHeaderBlobB: {
+    position: 'absolute', bottom: -60, left: -40, width: 150, height: 150, borderRadius: 75,
+    backgroundColor: 'rgba(0,0,0,0.08)',
+  },
+  dashHeaderTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  dashBrand: { color: 'rgba(255,255,255,0.85)', fontSize: theme.fontSize.caption, fontWeight: '800', letterSpacing: 1 },
+  dashHeaderIcons: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
+  dashIconBtn: {
+    width: 34, height: 34, borderRadius: 17,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  dashSosText: { color: '#fff', fontSize: 11, fontWeight: '900', letterSpacing: 0.5 },
+  dashBadge: {
+    position: 'absolute', top: -2, right: -2, minWidth: 16, height: 16, borderRadius: 8,
+    backgroundColor: theme.color.danger, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3,
+    borderWidth: 1.5, borderColor: theme.color.primary,
+  },
+  dashBadgeText: { color: '#fff', fontSize: 9, fontWeight: '800' },
+  dashProfileRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
+  dashAvatar: {
+    width: 52, height: 52, borderRadius: 26,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: 'rgba(255,255,255,0.4)',
+  },
+  dashInitials: { color: '#fff', fontSize: theme.fontSize.body, fontWeight: '800' },
+  dashProfileText: { flex: 1 },
+  dashName: { color: '#fff', fontSize: theme.fontSize.title, fontWeight: '800' },
+  dashUnit: { color: 'rgba(255,255,255,0.8)', fontSize: theme.fontSize.caption, marginTop: 2 },
+  dashTabs: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: theme.radius.pill,
+    padding: 4,
+  },
+  dashTab: { flex: 1, paddingVertical: 8, borderRadius: theme.radius.pill, alignItems: 'center' },
+  dashTabActive: { backgroundColor: '#fff' },
+  dashTabText: { color: 'rgba(255,255,255,0.9)', fontSize: theme.fontSize.label, fontWeight: '700' },
+  dashTabTextActive: { color: theme.color.primary },
+  dashGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: theme.spacing.md },
+  dashTile: {
+    width: '48.5%',
+    backgroundColor: theme.color.surface,
+    borderRadius: theme.radius.lg,
+    paddingVertical: theme.spacing.lg,
+    paddingHorizontal: theme.spacing.md,
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+    ...theme.shadow.soft,
+  },
+  dashTilePressed: { opacity: 0.85, transform: [{ scale: 0.98 }] },
+  dashTileIcon: { width: 56, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  dashTileLabel: { fontSize: theme.fontSize.label, fontWeight: '700', color: theme.color.text, textAlign: 'center' },
   // 2-column quick-action grid: each tile is ~half width, wraps to the next row.
   quickGrid: {
     flexDirection: 'row',

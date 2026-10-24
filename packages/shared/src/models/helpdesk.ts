@@ -43,6 +43,17 @@ export interface TicketAttachment {
   readonly fileId: string;
 }
 
+/** Mirror of `TicketCommentDto` — one message in a ticket's discussion thread. */
+export interface TicketComment {
+  readonly id: string;
+  readonly communityId: string;
+  readonly ticketId: string;
+  readonly body: string;
+  /** The acting user id that posted it (audit column), or null. */
+  readonly createdBy: string | null;
+  readonly createdAtUtc: string;
+}
+
 /** Mirror of `TicketCountByKeyDto` — one grouped analytics bucket (Req 34.5). */
 export interface TicketCountByKey {
   readonly key: string;

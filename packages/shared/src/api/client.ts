@@ -146,26 +146,47 @@ export class ApiClient {
       }
     }
 
+    // Fail fast when the server is unreachable/slow so the UI never hangs on a black/stuck screen.
+    // We combine the caller's signal (if any) with an internal timeout via AbortController.
+    const timeoutMs = 15000;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const onCallerAbort = () => controller.abort();
+    if (options.signal) {
+      if (options.signal.aborted) controller.abort();
+      else options.signal.addEventListener('abort', onCallerAbort, { once: true });
+    }
+
     let response: Response;
     try {
       response = await this.fetchImpl(url, {
         method,
         headers,
         body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
-        signal: options.signal,
+        signal: controller.signal,
       });
     } catch (cause) {
-      // Network/transport failure — surface as an integration failure, keep the correlation id.
-      // Log the underlying cause (dev aid) so an intermittent "can't reach server" is diagnosable
-      // from logcat; the user still sees the friendly INTEGRATION_FAILURE message.
+      // Network/transport failure or timeout — surface as an integration failure (server
+      // unreachable), keep the correlation id. If the CALLER aborted (e.g. screen unmounted), rethrow
+      // the abort so it isn't shown as an error. The underlying cause is logged for logcat diagnosis;
+      // the user sees the friendly "can't reach server" message.
+      if (options.signal?.aborted) {
+        throw cause;
+      }
+      const timedOut = controller.signal.aborted;
       // eslint-disable-next-line no-console
-      console.warn(`[API-NET] ${method} ${url} failed corr=${correlationId}: ${String((cause as Error)?.message ?? cause)}`);
+      console.warn(
+        `[API-NET] ${method} ${url} ${timedOut ? 'timed out' : 'failed'} corr=${correlationId}: ${String((cause as Error)?.message ?? cause)}`,
+      );
       throw new ApiRequestError({
         code: 'INTEGRATION_FAILURE',
-        message: 'Network request failed.',
+        message: timedOut ? 'The server took too long to respond.' : 'Network request failed.',
         correlationId,
         httpStatus: 0,
       });
+    } finally {
+      clearTimeout(timeout);
+      if (options.signal) options.signal.removeEventListener('abort', onCallerAbort);
     }
 
     return this.parseEnvelope<T>(response, correlationId);

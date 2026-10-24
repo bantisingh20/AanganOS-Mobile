@@ -8,9 +8,10 @@ import React, {
   useState,
 } from 'react';
 import type { AuthService } from './authService';
-import type { SecureTokenStore } from './tokenStore';
+import { isPlatformSuperAdminToken, type SecureTokenStore } from './tokenStore';
 import type { LoginRequest, LoginResponse } from '../models/auth';
 import { isRefreshTokenDead } from './refreshFailure';
+import { ApiRequestError } from '../api/errors';
 
 /**
  * Session lifecycle for the app shell (Req 1.1, 1.3). `restoring` is the launch state while we
@@ -93,6 +94,14 @@ export function AuthProvider({
         return;
       }
       if (restored) {
+        // A persisted platform-admin session must not sign into the mobile app — wipe it + login.
+        const tok = tokenStore.getAccessToken();
+        if (tok && isPlatformSuperAdminToken(tok)) {
+          await tokenStore.clear();
+          if (!active) return;
+          setStatus('unauthenticated');
+          return;
+        }
         setRoles(tokenStore.getRoles());
         setUserId(tokenStore.getUserId());
         setDisplayName(tokenStore.getDisplayName());
@@ -117,6 +126,13 @@ export function AuthProvider({
           try {
             await auth.refresh();
             if (!active) return;
+            // Reject a refreshed platform-admin session on the mobile app (wipe + login).
+            const tok = tokenStore.getAccessToken();
+            if (tok && isPlatformSuperAdminToken(tok)) {
+              await tokenStore.clear();
+              if (!active) return;
+              break;
+            }
             setRoles(tokenStore.getRoles());
             setUserId(tokenStore.getUserId());
             setDisplayName(tokenStore.getDisplayName());
@@ -160,6 +176,19 @@ export function AuthProvider({
   const login = useCallback(
     async (request: LoginRequest): Promise<LoginResponse> => {
       const result = await auth.login(request);
+      // Platform power users / super-admins belong in the WEB admin portal, not this
+      // resident/guard app. Reject such a login: revoke the just-created session server-side and
+      // clear local tokens, then surface a clear FORBIDDEN error. The session is never left active.
+      if (isPlatformSuperAdminToken(result.accessToken)) {
+        await auth.logout().catch(() => undefined);
+        throw new ApiRequestError({
+          code: 'FORBIDDEN',
+          message:
+            'This account is a platform administrator. Please use the web admin portal to sign in.',
+          correlationId: '',
+          httpStatus: 403,
+        });
+      }
       tokenStore.setDisplayName(request.identifier);
       setRoles(tokenStore.getRoles());
       setUserId(tokenStore.getUserId());

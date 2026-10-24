@@ -189,23 +189,23 @@ export function LoginScreen({ appTitle, onForgotPassword, headerSlot }: LoginScr
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: theme.color.hero },
+  root: { flex: 1, backgroundColor: theme.color.primary },
   flex: { flex: 1 },
 
-  // --- Gradient-like backdrop (dark base + soft colour blobs) ---
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: theme.color.hero, overflow: 'hidden' },
+  // --- Gradient-like backdrop (blue base + soft colour blobs), matching the home header. ---
+  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: theme.color.primary, overflow: 'hidden' },
   blob: { position: 'absolute', borderRadius: 9999 },
   blobTop: {
     width: 420, height: 420, top: -140, right: -120,
-    backgroundColor: 'rgba(37,99,235,0.45)', // brand blue glow
+    backgroundColor: 'rgba(255,255,255,0.18)', // light glow
   },
   blobMid: {
     width: 360, height: 360, top: 180, left: -140,
-    backgroundColor: 'rgba(130,80,223,0.38)', // violet glow
+    backgroundColor: 'rgba(14,165,233,0.45)', // cyan glow
   },
   blobBottom: {
     width: 460, height: 460, bottom: -180, right: -80,
-    backgroundColor: 'rgba(14,165,233,0.30)', // cyan glow
+    backgroundColor: 'rgba(37,99,235,0.55)', // deeper blue
   },
 
   scroll: { flexGrow: 1, justifyContent: 'center', padding: theme.spacing.xl, gap: theme.spacing.xl },

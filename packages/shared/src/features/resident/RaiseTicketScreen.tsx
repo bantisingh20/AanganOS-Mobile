@@ -2,7 +2,6 @@ import React, { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FormScreen } from '../../ui/FormScreen';
-import { FormSection } from '../../ui/FormSection';
 import { AppTextField } from '../../ui/AppTextField';
 import { AppButton } from '../../ui/AppButton';
 import { FormBanner } from '../../ui/FormBanner';
@@ -150,11 +149,14 @@ export function RaiseTicketScreen({ resources, onBack }: RaiseTicketScreenProps)
         emptyMessage="No unit is linked to your account yet, so a ticket can't be raised."
         onRetry={me.reload}
       >
-        {/* Unit — only a chooser when there are several; a single unit is shown as a read-only chip. */}
-        <FormSection title="Unit" icon="home" tint={theme.color.info}>
+        {/* One clean, modern card holding the whole complaint form (reference style). */}
+        <View style={styles.formCard}>
+          <Text style={styles.formHeading}>Raise complaint</Text>
+
+          {/* Unit — read-only chip for a single unit, a chooser only when there are several. */}
           {units.length > 1 ? (
             <Select
-              label="Host unit"
+              label="Unit"
               required
               value={effectiveUnitId}
               options={unitOptions}
@@ -162,57 +164,25 @@ export function RaiseTicketScreen({ resources, onBack }: RaiseTicketScreenProps)
               placeholder="Select the unit this is for"
             />
           ) : (
-            <View style={styles.unitRow}>
-              <Ionicons name="home" size={18} color={theme.color.info} />
-              <Text style={styles.unitText}>Unit {units[0]?.unitNumber ?? ''}</Text>
-              <Badge label="Your unit" tone="positive" />
+            <View style={styles.unitChip}>
+              <Ionicons name="home" size={16} color={theme.color.primary} />
+              <Text style={styles.unitChipText}>Unit {units[0]?.unitNumber ?? ''}</Text>
             </View>
           )}
-        </FormSection>
 
-        {/* Issue details */}
-        <FormSection title="What's the issue?" icon="create" tint={theme.color.primary}>
-          <AppTextField
-            label="Title"
-            required
-            value={title}
-            onChangeText={setTitle}
-            placeholder="Short summary, e.g. Kitchen tap leaking"
-            autoCapitalize="sentences"
-            {...(raise.error?.fieldErrors.title ? { error: raise.error.fieldErrors.title } : {})}
-          />
-          <AppTextField
-            label="Description"
-            required
-            value={description}
-            onChangeText={setDescription}
-            placeholder="Describe the problem and where it is"
-            autoCapitalize="sentences"
-            multiline
-            numberOfLines={5}
-            {...(raise.error?.fieldErrors.description ? { error: raise.error.fieldErrors.description } : {})}
-          />
+          {/* Complaint type (category). */}
           <MasterDataDropdown
-            label="Category"
+            label="Complaint type"
             required
             listKey={HelpdeskMasterDataKeys.TicketCategory}
             masterData={resources.masterData}
             value={category}
             onChange={setCategory}
             {...(uploadCommunityId ? { communityId: uploadCommunityId } : {})}
-            placeholder="Select a category"
+            placeholder="Select complaint type"
           />
-          <MasterDataDropdown
-            label="Subcategory (optional)"
-            listKey={HelpdeskMasterDataKeys.TicketSubcategory}
-            masterData={resources.masterData}
-            value={subcategory}
-            onChange={setSubcategory}
-            {...(uploadCommunityId ? { communityId: uploadCommunityId } : {})}
-            placeholder="Refine the category"
-            allowClear
-            clearLabel="None"
-          />
+
+          {/* Priority (optional) — master-data driven, defaults to the community default. */}
           <MasterDataDropdown
             label="Priority (optional)"
             listKey={HelpdeskMasterDataKeys.TicketPriority}
@@ -224,48 +194,99 @@ export function RaiseTicketScreen({ resources, onBack }: RaiseTicketScreenProps)
             allowClear
             clearLabel="Community default"
           />
-        </FormSection>
 
-        {/* Photo attachments (optional) */}
-        <FormSection title="Photos (optional)" subtitle="Add a photo of the issue" icon="camera" tint={theme.color.warning}>
-          {attachments.length > 0 ? (
-            <View style={styles.attachList}>
-              {attachments.map((ref, i) => (
-                <View key={ref} style={styles.attachRow}>
-                  <Ionicons name="image" size={18} color={theme.color.success} />
-                  <Text style={styles.attachText} numberOfLines={1}>Photo {i + 1}</Text>
-                  <Pressable onPress={() => removeAttachment(ref)} accessibilityRole="button" accessibilityLabel={`Remove photo ${i + 1}`} hitSlop={8}>
-                    <Ionicons name="close-circle" size={20} color={theme.color.danger} />
-                  </Pressable>
-                </View>
-              ))}
+          {/* Title. */}
+          <AppTextField
+            label="Title"
+            required
+            value={title}
+            onChangeText={setTitle}
+            placeholder="Short summary, e.g. Kitchen tap leaking"
+            autoCapitalize="sentences"
+            {...(raise.error?.fieldErrors.title ? { error: raise.error.fieldErrors.title } : {})}
+          />
+
+          {/* Description — the "Brief your complaint" area. */}
+          <AppTextField
+            label="Brief your complaint"
+            required
+            value={description}
+            onChangeText={setDescription}
+            placeholder="Describe the problem and where it is"
+            autoCapitalize="sentences"
+            multiline
+            numberOfLines={5}
+            {...(raise.error?.fieldErrors.description ? { error: raise.error.fieldErrors.description } : {})}
+          />
+
+          {/* Photo attachments. Added photos show as thumbnail tiles; the PhotoPicker renders its
+              own full-width Camera/Gallery actions below (never squeezed into a tiny tile). */}
+          <View style={styles.field}>
+            <View style={styles.photoHeader}>
+              <Text style={styles.fieldLabel}>Attach photos <Text style={styles.optional}>(optional)</Text></Text>
+              <Text style={styles.photoCount}>{attachments.length}/{MAX_ATTACHMENTS}</Text>
             </View>
-          ) : null}
-          {attachments.length < MAX_ATTACHMENTS && uploadCommunityId ? (
-            <PhotoPicker
-              key={pickerKey}
-              label={attachments.length === 0 ? 'Add a photo' : 'Add another photo'}
-              files={resources.files}
-              upload={{ owningResourceType: 'Ticket', communityId: uploadCommunityId }}
-              value={null}
-              onChange={onPhotoAdded}
-              disabled={raise.running}
-            />
-          ) : null}
-        </FormSection>
+
+            {attachments.length > 0 ? (
+              <View style={styles.photoRow}>
+                {attachments.map((ref, i) => (
+                  <View key={ref} style={styles.photoTile}>
+                    <Ionicons name="image" size={24} color={theme.color.success} />
+                    <Text style={styles.photoTileText}>Photo {i + 1}</Text>
+                    <Pressable
+                      onPress={() => removeAttachment(ref)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Remove photo ${i + 1}`}
+                      hitSlop={6}
+                      style={styles.photoRemove}
+                    >
+                      <Ionicons name="close-circle" size={20} color={theme.color.danger} />
+                    </Pressable>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+
+            {attachments.length < MAX_ATTACHMENTS && uploadCommunityId ? (
+              <View style={styles.photoPickerWrap}>
+                <PhotoPicker
+                  key={pickerKey}
+                  label={attachments.length === 0 ? 'Add a photo of the issue' : 'Add another photo'}
+                  files={resources.files}
+                  upload={{ owningResourceType: 'Ticket', communityId: uploadCommunityId }}
+                  value={null}
+                  onChange={onPhotoAdded}
+                  disabled={raise.running}
+                />
+              </View>
+            ) : null}
+          </View>
+        </View>
 
         {raise.error && !raise.error.fieldErrors.title && !raise.error.fieldErrors.description ? (
           <FormBanner message={raise.error.message} tone="error" />
         ) : null}
 
         <View style={styles.actions}>
-          <AppButton
-            title="Raise ticket"
-            loading={raise.running}
-            disabled={!canSubmit}
+          <Pressable
             onPress={() => raise.run()}
+            disabled={!canSubmit || raise.running}
+            accessibilityRole="button"
+            accessibilityLabel="Raise ticket"
             accessibilityHint="Submit this ticket to the helpdesk"
-          />
+            style={({ pressed }) => [
+              styles.submit,
+              (!canSubmit || raise.running) ? styles.submitDisabled : null,
+              pressed ? styles.submitPressed : null,
+            ]}
+          >
+            <Ionicons
+              name={raise.running ? 'hourglass' : 'paper-plane'}
+              size={18}
+              color="#fff"
+            />
+            <Text style={styles.submitText}>{raise.running ? 'Submitting…' : 'Raise ticket'}</Text>
+          </Pressable>
         </View>
       </AsyncBoundary>
     </FormScreen>
@@ -275,15 +296,60 @@ export function RaiseTicketScreen({ resources, onBack }: RaiseTicketScreenProps)
 const styles = StyleSheet.create({
   actions: { marginTop: theme.spacing.sm, gap: theme.spacing.sm },
 
-  unitRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
-  unitText: { flex: 1, fontSize: theme.fontSize.body, fontWeight: '700', color: theme.color.text },
-
-  attachList: { gap: theme.spacing.sm, marginBottom: theme.spacing.sm },
-  attachRow: {
-    flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm,
-    backgroundColor: theme.color.background, borderRadius: theme.radius.md, padding: theme.spacing.sm,
+  // Modern pill submit: bold primary fill, icon + label, soft shadow.
+  submit: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.spacing.sm,
+    backgroundColor: theme.color.primary,
+    borderRadius: theme.radius.pill,
+    paddingVertical: theme.spacing.md + 2,
+    ...theme.shadow.soft,
   },
-  attachText: { flex: 1, fontSize: theme.fontSize.label, color: theme.color.text, fontWeight: '600' },
+  submitDisabled: { backgroundColor: theme.color.disabled, shadowOpacity: 0, elevation: 0 },
+  submitPressed: { opacity: 0.9, transform: [{ scale: 0.99 }] },
+  submitText: { color: '#fff', fontSize: theme.fontSize.body, fontWeight: '800', letterSpacing: 0.3 },
+
+  // --- Modern single-card form (reference "Raise complaint") ---
+  formCard: {
+    backgroundColor: theme.color.surface,
+    borderRadius: theme.radius.xl,
+    padding: theme.spacing.lg,
+    gap: theme.spacing.md,
+    ...theme.shadow.soft,
+  },
+  formHeading: { fontSize: theme.fontSize.title, fontWeight: '800', color: theme.color.text, marginBottom: theme.spacing.xs },
+  field: { gap: 6 },
+  fieldLabel: { fontSize: theme.fontSize.label, fontWeight: '700', color: theme.color.text },
+  optional: { fontSize: theme.fontSize.caption, fontWeight: '500', color: theme.color.mutedText },
+  unitChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
+    backgroundColor: `${theme.color.primary}14`, borderRadius: theme.radius.pill,
+    paddingVertical: 6, paddingHorizontal: theme.spacing.md,
+  },
+  unitChipText: { fontSize: theme.fontSize.label, fontWeight: '700', color: theme.color.primary },
+  photoHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  photoCount: { fontSize: theme.fontSize.caption, color: theme.color.mutedText, fontWeight: '700' },
+  photoRow: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm, marginTop: 4 },
+  photoTile: {
+    width: 84, height: 84, borderRadius: theme.radius.md,
+    backgroundColor: `${theme.color.success}14`, alignItems: 'center', justifyContent: 'center', gap: 4,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: theme.color.border,
+  },
+  photoTileText: { fontSize: 11, color: theme.color.mutedText, fontWeight: '600' },
+  photoRemove: { position: 'absolute', top: -7, right: -7, backgroundColor: theme.color.surface, borderRadius: 10 },
+  // The picker renders its own labelled Camera/Gallery actions; give it a soft dashed well so it
+  // reads as an "add" area, and let it size naturally (no fixed tiny width).
+  photoPickerWrap: {
+    marginTop: theme.spacing.sm,
+    backgroundColor: theme.color.background,
+    borderRadius: theme.radius.lg,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: theme.color.border,
+    padding: theme.spacing.md,
+  },
 
   // Success state.
   successHero: { alignItems: 'center', gap: theme.spacing.xs, paddingVertical: theme.spacing.lg },

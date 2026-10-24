@@ -10,7 +10,7 @@ import { FormBanner } from '../../ui/FormBanner';
 import { useAsync, useAsyncAction } from '../../ui/hooks';
 import { theme } from '../../ui/theme';
 import { TicketStatus } from '../../models/helpdesk';
-import type { Ticket, TicketAttachment } from '../../models/helpdesk';
+import type { Ticket, TicketAttachment, TicketComment } from '../../models/helpdesk';
 import type { ResourceClients } from '../../resources';
 import { ticketStatusTone, humanizeCode } from '../shared/status';
 
@@ -40,10 +40,25 @@ export function TicketDetailScreen({ resources, ticketId, initialTicket, onBack 
     (signal) => resources.helpdesk.getAttachments(ticketId, { signal }),
     [ticketId],
   );
+  const commentsState = useAsync<TicketComment[]>(
+    (signal) => resources.helpdesk.getComments(ticketId, { signal }),
+    [ticketId],
+  );
 
   const ticket = data ?? initialTicket ?? null;
   const [rating, setRating] = useState<number | null>(null);
   const [comment, setComment] = useState('');
+  const [newComment, setNewComment] = useState('');
+
+  const postComment = useAsyncAction(() => {
+    const text = newComment.trim();
+    if (!text) return Promise.reject(new Error('Enter a comment'));
+    return resources.helpdesk.addComment(ticketId, text).then((c) => {
+      setNewComment('');
+      commentsState.reload();
+      return c;
+    });
+  });
 
   const submit = useAsyncAction(() => {
     if (rating === null) return Promise.reject(new Error('Select a rating'));
@@ -66,19 +81,33 @@ export function TicketDetailScreen({ resources, ticketId, initialTicket, onBack 
       >
         {ticket ? (
           <>
-            {/* Status hero */}
-            <View style={styles.hero}>
+            {/* Status hero — a bold status-tinted header card (reference "Complaint info"). */}
+            <View style={[styles.hero, { backgroundColor: toneColor(tone) }]}>
+              <View style={styles.heroBlobA} />
+              <View style={styles.heroBlobB} />
+
               <View style={styles.heroTop}>
-                <View style={[styles.heroIcon, { backgroundColor: `${toneColor(tone)}1f` }]}>
-                  <Ionicons name="construct" size={22} color={toneColor(tone)} />
+                <View style={styles.heroCat}>
+                  <Ionicons name="construct" size={16} color="#fff" />
+                  <Text style={styles.heroCatText} numberOfLines={1}>{humanizeCode(ticket.category)}</Text>
                 </View>
-                <Badge label={humanizeCode(ticket.status)} tone={tone} />
+                <View style={styles.heroStatusPill}>
+                  <Text style={styles.heroStatusText}>{humanizeCode(ticket.status).toUpperCase()}</Text>
+                </View>
               </View>
-              <Text style={styles.heroTitle}>{ticket.title}</Text>
-              <View style={styles.chipRow}>
-                <MetaChip icon="pricetag-outline" label={humanizeCode(ticket.category)} />
-                {ticket.subcategory ? <MetaChip icon="pricetags-outline" label={humanizeCode(ticket.subcategory)} /> : null}
-                <MetaChip icon="flag-outline" label={humanizeCode(ticket.priority)} />
+
+              <Text style={styles.heroTitle} numberOfLines={3}>{ticket.title}</Text>
+
+              <View style={styles.heroMetaRow}>
+                <View style={styles.heroMeta}>
+                  <Ionicons name="flag" size={13} color="rgba(255,255,255,0.85)" />
+                  <Text style={styles.heroMetaText}>{humanizeCode(ticket.priority)}</Text>
+                </View>
+                <View style={styles.heroMetaDot} />
+                <View style={styles.heroMeta}>
+                  <Ionicons name="time" size={13} color="rgba(255,255,255,0.85)" />
+                  <Text style={styles.heroMetaText}>Raised {formatDateTime(ticket.createdAtUtc)}</Text>
+                </View>
               </View>
             </View>
 
@@ -118,6 +147,62 @@ export function TicketDetailScreen({ resources, ticketId, initialTicket, onBack 
                   })}
                 </View>
               </AsyncBoundary>
+            </Section>
+
+            {/* Comments — the discussion thread + a write box (reference "Recent comments"). */}
+            <Section title="Comments" icon="chatbubbles-outline">
+              <AsyncBoundary
+                loading={commentsState.loading}
+                error={commentsState.error}
+                empty={!commentsState.loading && (commentsState.data ?? []).length === 0}
+                emptyMessage="No comments yet. Start the conversation below."
+                onRetry={commentsState.reload}
+              >
+                <View style={styles.commentList}>
+                  {(commentsState.data ?? []).map((c) => (
+                    <View key={c.id} style={styles.commentRow}>
+                      <View style={styles.commentAvatar}>
+                        <Ionicons name="person" size={14} color={theme.color.primary} />
+                      </View>
+                      <View style={styles.commentBubble}>
+                        <Text style={styles.commentBody}>{c.body}</Text>
+                        <Text style={styles.commentTime}>{formatDateTime(c.createdAtUtc)}</Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              </AsyncBoundary>
+
+              {/* Write box */}
+              <View style={styles.commentCompose}>
+                <AppTextField
+                  label="Add a comment"
+                  value={newComment}
+                  onChangeText={setNewComment}
+                  placeholder="Write a comment…"
+                  autoCapitalize="sentences"
+                  multiline
+                  numberOfLines={2}
+                  {...(postComment.error?.fieldErrors.body ? { error: postComment.error.fieldErrors.body } : {})}
+                />
+                {postComment.error && !postComment.error.fieldErrors.body ? (
+                  <FormBanner message={postComment.error.message} tone="error" />
+                ) : null}
+                <Pressable
+                  onPress={() => postComment.run()}
+                  disabled={newComment.trim().length === 0 || postComment.running}
+                  accessibilityRole="button"
+                  accessibilityLabel="Post comment"
+                  style={({ pressed }) => [
+                    styles.commentPost,
+                    (newComment.trim().length === 0 || postComment.running) ? styles.commentPostDisabled : null,
+                    pressed ? { opacity: 0.9 } : null,
+                  ]}
+                >
+                  <Ionicons name={postComment.running ? 'hourglass' : 'send'} size={16} color="#fff" />
+                  <Text style={styles.commentPostText}>{postComment.running ? 'Posting…' : 'Post'}</Text>
+                </Pressable>
+              </View>
             </Section>
 
             {/* Feedback */}
@@ -194,16 +279,6 @@ function Section({ title, icon, children }: { title: string; icon: keyof typeof 
   );
 }
 
-/** A small icon + label chip on the hero. */
-function MetaChip({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; label: string }) {
-  return (
-    <View style={styles.metaChip}>
-      <Ionicons name={icon} size={13} color={theme.color.mutedText} />
-      <Text style={styles.metaChipText}>{label}</Text>
-    </View>
-  );
-}
-
 /** A step in the timeline: a colored dot + label + value. */
 function TimelineRow({ icon, label, value, done, last }: { icon: keyof typeof Ionicons.glyphMap; label: string; value: string; done: boolean; last?: boolean }) {
   return (
@@ -241,20 +316,30 @@ function formatDateTime(iso: string): string {
 }
 
 const styles = StyleSheet.create({
-  // Status hero.
+  // Status hero — bold tinted header card.
   hero: {
-    backgroundColor: theme.color.surface,
-    borderRadius: theme.radius.lg,
+    borderRadius: theme.radius.xl,
     padding: theme.spacing.lg,
-    gap: theme.spacing.sm,
-    ...theme.shadow.soft,
+    gap: theme.spacing.md,
+    overflow: 'hidden',
+    ...theme.shadow.hero,
   },
-  heroTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  heroIcon: { width: 44, height: 44, borderRadius: theme.radius.md, alignItems: 'center', justifyContent: 'center' },
-  heroTitle: { fontSize: theme.fontSize.title, fontWeight: '800', color: theme.color.text },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.xs },
-  metaChip: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: theme.color.background, borderRadius: theme.radius.pill, paddingVertical: 5, paddingHorizontal: theme.spacing.md },
-  metaChipText: { fontSize: theme.fontSize.caption, color: theme.color.text, fontWeight: '600' },
+  heroBlobA: { position: 'absolute', top: -50, right: -30, width: 150, height: 150, borderRadius: 75, backgroundColor: 'rgba(255,255,255,0.14)' },
+  heroBlobB: { position: 'absolute', bottom: -60, left: -40, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(0,0,0,0.08)' },
+  heroTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.sm },
+  heroCat: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1,
+    backgroundColor: 'rgba(255,255,255,0.18)', borderRadius: theme.radius.pill,
+    paddingVertical: 5, paddingHorizontal: theme.spacing.md,
+  },
+  heroCatText: { color: '#fff', fontSize: theme.fontSize.caption, fontWeight: '700', flexShrink: 1 },
+  heroStatusPill: { backgroundColor: '#fff', borderRadius: theme.radius.pill, paddingVertical: 5, paddingHorizontal: theme.spacing.md },
+  heroStatusText: { fontSize: 10, fontWeight: '900', letterSpacing: 0.6, color: theme.color.text },
+  heroTitle: { fontSize: theme.fontSize.heading, fontWeight: '800', color: '#fff', lineHeight: 30 },
+  heroMetaRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, flexWrap: 'wrap' },
+  heroMeta: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  heroMetaText: { color: 'rgba(255,255,255,0.9)', fontSize: theme.fontSize.caption, fontWeight: '600' },
+  heroMetaDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: 'rgba(255,255,255,0.5)' },
 
   // Section cards.
   section: {
@@ -287,4 +372,27 @@ const styles = StyleSheet.create({
   feedbackPrompt: { fontSize: theme.fontSize.label, color: theme.color.mutedText },
   starsRow: { flexDirection: 'row', gap: theme.spacing.xs, alignItems: 'center' },
   feedbackGiven: { gap: theme.spacing.sm },
+
+  // Comments.
+  commentList: { gap: theme.spacing.md },
+  commentRow: { flexDirection: 'row', gap: theme.spacing.sm, alignItems: 'flex-start' },
+  commentAvatar: {
+    width: 30, height: 30, borderRadius: 15,
+    backgroundColor: `${theme.color.primary}1a`, alignItems: 'center', justifyContent: 'center', marginTop: 2,
+  },
+  commentBubble: {
+    flex: 1, backgroundColor: theme.color.background, borderRadius: theme.radius.md,
+    padding: theme.spacing.md, gap: 4,
+  },
+  commentBody: { fontSize: theme.fontSize.label, color: theme.color.text, lineHeight: 20 },
+  commentTime: { fontSize: theme.fontSize.caption, color: theme.color.mutedText },
+  commentCompose: { gap: theme.spacing.sm, marginTop: theme.spacing.sm },
+  commentPost: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    alignSelf: 'flex-end',
+    backgroundColor: theme.color.primary, borderRadius: theme.radius.pill,
+    paddingVertical: theme.spacing.sm, paddingHorizontal: theme.spacing.xl,
+  },
+  commentPostDisabled: { backgroundColor: theme.color.disabled },
+  commentPostText: { color: '#fff', fontSize: theme.fontSize.label, fontWeight: '800' },
 });

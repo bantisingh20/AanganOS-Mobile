@@ -1,7 +1,7 @@
 import type { ApiClient } from '../api/client';
 import type { PagedData } from '../models/envelope';
 import type { ListQuery } from '../models/query';
-import type { Ticket, TicketAttachment, TicketAnalytics } from '../models/helpdesk';
+import type { Ticket, TicketAttachment, TicketComment, TicketAnalytics } from '../models/helpdesk';
 import { buildQuery, listQueryParams } from './query';
 import { newIdempotencyKey } from './idempotency';
 
@@ -93,6 +93,16 @@ export class HelpdeskClient {
   /** The ticket's File_Service attachment references (Req 32.3). */
   getAttachments(id: string, options?: { signal?: AbortSignal }): Promise<TicketAttachment[]> {
     return this.api.get<TicketAttachment[]>(`/api/v1/tickets/${id}/attachments`, options);
+  }
+
+  /** The ticket's discussion thread, oldest-first. */
+  getComments(id: string, options?: { signal?: AbortSignal }): Promise<TicketComment[]> {
+    return this.api.get<TicketComment[]>(`/api/v1/tickets/${id}/comments`, options);
+  }
+
+  /** Post a comment to the ticket (resident or staff). */
+  addComment(id: string, body: string): Promise<TicketComment> {
+    return this.api.post<TicketComment>(`/api/v1/tickets/${id}/comments`, { body: { body } });
   }
 
   /** Aggregated helpdesk analytics, optionally narrowed to one authorized community (Req 34.5). */

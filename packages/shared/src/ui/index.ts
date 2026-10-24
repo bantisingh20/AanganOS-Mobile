@@ -35,3 +35,4 @@ export * from './ToastProvider';
 export * from './ScreenHeader';
 export * from './FormScreen';
 export * from './BottomSheet';
+export * from './ErrorBoundary';

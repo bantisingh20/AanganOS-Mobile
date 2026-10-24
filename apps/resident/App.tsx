@@ -4,6 +4,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import {
   AuthGate,
   AuthProvider,
+  ErrorBoundary,
   HomeNavigator,
   ToastProvider,
   hasAdminRole,
@@ -26,18 +27,20 @@ export default function App() {
   useMediaPermissions();
   return (
     <SafeAreaProvider>
-      <ToastProvider>
-        <AuthProvider
-          auth={core.auth}
-          tokenStore={core.tokenStore}
-          onAuthenticated={core.onAuthenticated}
-        >
-          <StatusBar style="light" />
-          <AuthGate appTitle="Resident" auth={core.auth}>
-            <ResidentHome core={core} />
-          </AuthGate>
-        </AuthProvider>
-      </ToastProvider>
+      <ErrorBoundary>
+        <ToastProvider>
+          <AuthProvider
+            auth={core.auth}
+            tokenStore={core.tokenStore}
+            onAuthenticated={core.onAuthenticated}
+          >
+            <StatusBar style="light" />
+            <AuthGate appTitle="Resident" auth={core.auth}>
+              <ResidentHome core={core} />
+            </AuthGate>
+          </AuthProvider>
+        </ToastProvider>
+      </ErrorBoundary>
     </SafeAreaProvider>
   );
 }

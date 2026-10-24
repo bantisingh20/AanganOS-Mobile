@@ -3,7 +3,6 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FormScreen } from '../../ui/FormScreen';
 import { AsyncBoundary } from '../../ui/AsyncBoundary';
-import { Badge } from '../../ui/Badge';
 import { Pager } from '../../ui/Pager';
 import { useAsync } from '../../ui/hooks';
 import { theme } from '../../ui/theme';
@@ -20,18 +19,6 @@ export interface TicketListScreenProps {
 }
 
 type TicketView = { name: 'list' } | { name: 'detail'; ticket: Ticket };
-
-/** A per-category icon so each ticket reads at a glance. */
-function categoryIcon(code: string): keyof typeof Ionicons.glyphMap {
-  switch (code) {
-    case 'plumbing': return 'water';
-    case 'electrical': return 'flash';
-    case 'housekeeping': return 'sparkles';
-    case 'security': return 'shield-checkmark';
-    case 'common_area': return 'business';
-    default: return 'construct';
-  }
-}
 
 /**
  * Resident ticket list (Req 32.4, 34.1) — a modern, card-based surface mirroring the announcements
@@ -82,6 +69,7 @@ export function TicketListScreen({ resources, onBack }: TicketListScreenProps) {
         <View style={styles.list}>
           {items.map((t) => {
             const tone = ticketStatusTone(t.status);
+            const accent = toneColor(tone);
             return (
               <Pressable
                 key={t.id}
@@ -91,20 +79,33 @@ export function TicketListScreen({ resources, onBack }: TicketListScreenProps) {
                 accessibilityLabel={t.title}
                 accessibilityHint="Open ticket details"
               >
-                <View style={styles.cardHeader}>
-                  <View style={[styles.iconTile, { backgroundColor: `${toneColor(tone)}1f` }]}>
-                    <Ionicons name={categoryIcon(t.category)} size={20} color={toneColor(tone)} />
+                {/* Left status accent rail (reference look). */}
+                <View style={[styles.rail, { backgroundColor: accent }]} />
+
+                {/* Top row: category title + tag on the left, status pill on the right. */}
+                <View style={styles.topRow}>
+                  <View style={styles.titleWrap}>
+                    <View style={[styles.catDot, { backgroundColor: accent }]} />
+                    <Text style={styles.title} numberOfLines={1}>{humanizeCode(t.category)}</Text>
+                    <Text style={styles.catTag} numberOfLines={1}>· {humanizeCode(t.priority)}</Text>
                   </View>
-                  <View style={styles.headerText}>
-                    <Text style={styles.title} numberOfLines={1}>{t.title}</Text>
-                    <Text style={styles.sub} numberOfLines={1}>
-                      {humanizeCode(t.category)} · {humanizeCode(t.priority)} · {formatDate(t.createdAtUtc)}
-                    </Text>
+                  <View style={[styles.statusPill, { backgroundColor: accent }]}>
+                    <Text style={styles.statusPillText}>{humanizeCode(t.status).toUpperCase()}</Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={18} color={theme.color.mutedText} />
                 </View>
-                <View style={styles.cardFooter}>
-                  <Badge label={humanizeCode(t.status)} tone={tone} />
+
+                {/* Complaint text. */}
+                <Text style={styles.body} numberOfLines={2}>{t.title}</Text>
+
+                {/* Footer with a hairline divider: raised meta + a chevron. */}
+                <View style={styles.footer}>
+                  <Ionicons name="time-outline" size={13} color={theme.color.mutedText} />
+                  <Text style={styles.footerText} numberOfLines={1}>
+                    Raised {formatDate(t.createdAtUtc)}
+                  </Text>
+                  <View style={{ flex: 1 }} />
+                  <Text style={[styles.openLink, { color: accent }]}>View</Text>
+                  <Ionicons name="chevron-forward" size={15} color={accent} />
                 </View>
               </Pressable>
             );
@@ -145,14 +146,30 @@ const styles = StyleSheet.create({
     backgroundColor: theme.color.surface,
     borderRadius: theme.radius.lg,
     padding: theme.spacing.lg,
+    paddingLeft: theme.spacing.lg + 4,
     gap: theme.spacing.sm,
+    overflow: 'hidden',
     ...theme.shadow.soft,
   },
-  cardPressed: { opacity: 0.85 },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
-  iconTile: { width: 40, height: 40, borderRadius: theme.radius.md, alignItems: 'center', justifyContent: 'center' },
-  headerText: { flex: 1, gap: 2 },
-  title: { fontSize: theme.fontSize.body, fontWeight: '800', color: theme.color.text },
-  sub: { fontSize: theme.fontSize.caption, color: theme.color.mutedText },
-  cardFooter: { flexDirection: 'row', alignItems: 'center' },
+  cardPressed: { opacity: 0.9, transform: [{ scale: 0.995 }] },
+  rail: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 4 },
+  topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.sm },
+  titleWrap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  catDot: { width: 8, height: 8, borderRadius: 4 },
+  title: { fontSize: theme.fontSize.body, fontWeight: '800', color: theme.color.text, flexShrink: 1 },
+  catTag: { fontSize: theme.fontSize.caption, color: theme.color.mutedText, fontWeight: '600' },
+  statusPill: { borderRadius: theme.radius.pill, paddingVertical: 4, paddingHorizontal: theme.spacing.md },
+  statusPillText: { color: '#fff', fontSize: 10, fontWeight: '900', letterSpacing: 0.6 },
+  body: { fontSize: theme.fontSize.label, color: theme.color.text, lineHeight: 20 },
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: theme.spacing.xs,
+    paddingTop: theme.spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: theme.color.border,
+  },
+  footerText: { fontSize: theme.fontSize.caption, color: theme.color.mutedText, fontWeight: '600' },
+  openLink: { fontSize: theme.fontSize.caption, fontWeight: '800' },
 });

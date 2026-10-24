@@ -22,15 +22,18 @@ const FRIENDLY_BY_CODE: Partial<Record<ErrorCode, string>> = {
   // credential-specific message for its OWN failed sign-in; everywhere else "session ended" is
   // correct — never claim wrong credentials on an in-app screen.
   UNAUTHENTICATED: 'Your session has ended. Please sign in again.',
-  FORBIDDEN: "You don't have permission to do that.",
-  NOT_FOUND: "We couldn't find what you were looking for.",
-  CONFLICT: 'That action conflicts with the current state. Please refresh and try again.',
+  FORBIDDEN: 'This account is not allowed to use this app. Please contact your community admin.',
+  NOT_FOUND: "We couldn't find what you were looking for. It may have been removed.",
+  CONFLICT: 'This was already updated. Please refresh and try again.',
   VALIDATION_ERROR: 'Please check the highlighted fields and try again.',
   RATE_LIMITED: 'Too many attempts. Please wait a moment and try again.',
   PAYLOAD_TOO_LARGE: 'That file is too large. Please choose a smaller one.',
   UNSUPPORTED_MEDIA_TYPE: 'That file type is not supported.',
-  INTEGRATION_FAILURE: "We couldn't reach the server. Check your connection and try again.",
-  INTERNAL_ERROR: GENERIC_MESSAGE,
+  // The server is unreachable (down, restarting, or no connection) — this is the backend-off case.
+  INTEGRATION_FAILURE:
+    "Can't reach the server right now. Please check your internet and try again in a moment.",
+  // A real server-side fault. Keep it reassuring and actionable, not scary/technical.
+  INTERNAL_ERROR: 'The server ran into a problem. Please try again in a moment.',
 };
 
 /** The friendly top-line message for an error code (falls back to the generic message). */
@@ -81,6 +84,12 @@ export function toFormError(err: unknown): FormErrorView {
     // "wrong credentials") so they know to wait rather than keep guessing their password. The server
     // sends a safe "temporarily locked" message — surface it verbatim for that case.
     if (err.code === 'UNAUTHENTICATED' && /lock/i.test(err.message)) {
+      return { message: err.message, fieldErrors: err.fieldErrorMap };
+    }
+    // FORBIDDEN carries a specific, safe reason in some flows (e.g. the platform-admin login block:
+    // "use the web admin portal"). Prefer that explicit message over the generic code line so the
+    // user knows exactly why; fall back to the friendly default when the server gave no text.
+    if (err.code === 'FORBIDDEN' && err.message.trim().length > 0) {
       return { message: err.message, fieldErrors: err.fieldErrorMap };
     }
     return { message: friendlyMessageForCode(err.code), fieldErrors: err.fieldErrorMap };
