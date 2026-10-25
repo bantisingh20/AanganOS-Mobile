@@ -42,20 +42,7 @@ const DEV_DEFAULT_PASSWORD = __DEV__ ? '123' : '';
 // Online logo (per request: use an online logo). A neutral community/building glyph on a soft badge.
 const LOGO_URI = 'https://cdn-icons-png.flaticon.com/512/619/619153.png';
 
-/**
- * Login screen (Req 1.1, 1.2). Identifier + password → `AuthService.login` via the auth context,
- * which stores the token + roles and flips the app to authenticated. On failure the envelope's safe
- * message shows in the banner and any per-field `fieldErrors` under their inputs.
- *
- * UI — a modern "soft UI" blend of GLASS + CLAY + NEUMORPHISM done in pure RN (no CSS/Tailwind, no
- * native blur dep so it's a JS-only reload):
- *  - a deep gradient-like BACKDROP faked with layered translucent colour "blobs" over a dark base;
- *  - a frosted GLASS card (translucent white fill + hairline light border + layered soft shadow)
- *    reads as frosted over the colourful backdrop (no real backdrop-blur, approximated);
- *  - a CLAY logo badge (puffy, rounded, dual soft shadow);
- *  - NEUMORPHIC field + button wells (fields grouped on a soft extruded surface tinted to the card).
- * All inputs/buttons remain the accessible shared primitives (Req 65.6).
- */
+
 export function LoginScreen({ appTitle, onForgotPassword, headerSlot }: LoginScreenProps) {
   const { login } = useAuth();
   // DEV ONLY: prefilled credentials for faster local testing. REMOVE before production.

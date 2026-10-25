@@ -1,4 +1,6 @@
+import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
+import { OneSignal } from 'react-native-onesignal';
 import {
   ApiClient,
   AuthService,
@@ -6,6 +8,7 @@ import {
   createResourceClients,
   expoSecureStorage,
   isRefreshTokenDead,
+  registerDevice,
   resolveConfigFromEnv,
   type AppConfig,
   type LoginResponse,
@@ -18,10 +21,9 @@ import {
  * service + the Phase 2 resource clients. This is the single place the app assembles the shared
  * core; screens consume `core`.
  *
- * ponytail: push-notification device registration (OneSignal) is intentionally NOT wired in this
- * build — it needs a real OneSignal app id + the native plugin, which pulls in the Expo dev-client
- * launcher. The user-facing app ships without it; `onAuthenticated` is a safe no-op. Re-add behind
- * a real OneSignal app id when push is needed.
+ * Push-notification device registration (OneSignal) runs post-login via `onAuthenticated`, mirroring
+ * the guard app: it inits OneSignal with EXPO_PUBLIC_ONESIGNAL_APP_ID and posts the device's
+ * subscription id to the backend so notifications can target this user. Failure-tolerant.
  */
 export interface AppCore {
   readonly config: AppConfig;
@@ -64,7 +66,15 @@ export function createAppCore(): AppCore {
   const resources = createResourceClients(api);
 
   const onAuthenticated = async (): Promise<void> => {
-    // No-op in this build (push not wired). Kept so the AuthProvider contract is satisfied.
+    // Associate this device with the signed-in user so the backend can target push. Errors are
+    // swallowed by the caller (AuthProvider) so a push failure never blocks entry.
+    await registerDevice({
+      oneSignal: OneSignal,
+      config,
+      api,
+      platform: Platform.OS === 'ios' ? 'ios' : 'android',
+      appKind: 'resident',
+    });
   };
 
   return { config, tokenStore, api, auth, resources, onAuthenticated };

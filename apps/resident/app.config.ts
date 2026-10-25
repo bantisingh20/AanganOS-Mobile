@@ -1,24 +1,24 @@
 import type { ExpoConfig } from 'expo/config';
 
 /**
- * Resident/Owner app config. iOS + Android. This build ships WITHOUT the OneSignal plugin and the
- * Expo dev-client launcher so it opens straight into the app (no developer "select network / scan
- * QR / enter URL" harness). Push can be re-added later behind a real OneSignal app id.
+ * Resident/Owner app config. iOS + Android. Push notifications via OneSignal (FCM under the hood)
+ * using its Expo config plugin — this needs a dev-client / prebuild, not Expo Go. The OneSignal
+ * app id is read from env at build time (EXPO_PUBLIC_ONESIGNAL_APP_ID), never hardcoded here.
  */
 const config: ExpoConfig = {
   name: 'UrbanNest',
-  slug: 'communityos-resident',
-  scheme: 'communityos-resident',
+  slug: 'urbannest-resident',
+  scheme: 'urbannest',
   version: '0.1.0',
   orientation: 'portrait',
   userInterfaceStyle: 'automatic',
   icon: './assets/icon.png',
   ios: {
-    bundleIdentifier: 'com.communityos.resident',
+    bundleIdentifier: 'com.urbannest.resident',
     supportsTablet: true,
   },
   android: {
-    package: 'com.communityos.resident',
+    package: 'com.urbannest.resident',
     newArchEnabled: false,
     permissions: [
       'android.permission.CAMERA',
@@ -27,6 +27,12 @@ const config: ExpoConfig = {
   },
   plugins: [
     'expo-secure-store',
+    [
+      'onesignal-expo-plugin',
+      {
+        mode: 'production',
+      },
+    ],
     [
       'expo-image-picker',
       {
