@@ -6,7 +6,7 @@ import type { ExpoConfig } from 'expo/config';
  * QR / enter URL" harness). Push can be re-added later behind a real OneSignal app id.
  */
 const config: ExpoConfig = {
-  name: 'CommunityOS Resident',
+  name: 'UrbanNest',
   slug: 'communityos-resident',
   scheme: 'communityos-resident',
   version: '0.1.0',

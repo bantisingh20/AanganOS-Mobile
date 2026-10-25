@@ -5,6 +5,8 @@ import type {
   LoginRequest,
   LoginResponse,
   ResetPasswordRequest,
+  VerifyOtpRequest,
+  VerifyOtpResponse,
 } from '../models/auth';
 
 /**
@@ -59,6 +61,17 @@ export class AuthService {
 
   forgotPassword(request: ForgotPasswordRequest): Promise<{ message: string }> {
     return this.api.post<{ message: string }>('/api/v1/auth/password/forgot', {
+      body: request,
+      anonymous: true,
+    });
+  }
+
+  /**
+   * Verify the OTP for the SAME identifier (email/phone) the user entered, WITHOUT consuming it, so
+   * the verify screen can show valid/invalid before the user picks a new password. Anonymous.
+   */
+  verifyOtp(request: VerifyOtpRequest): Promise<VerifyOtpResponse> {
+    return this.api.post<VerifyOtpResponse>('/api/v1/auth/password/verify-otp', {
       body: request,
       anonymous: true,
     });

@@ -29,6 +29,17 @@ export interface ForgotPasswordRequest {
   readonly identifier: string;
 }
 
+/** `POST /auth/password/verify-otp` body — checks (without consuming) the code for this identifier. */
+export interface VerifyOtpRequest {
+  readonly identifier: string;
+  readonly code: string;
+}
+
+/** `POST /auth/password/verify-otp` success data. */
+export interface VerifyOtpResponse {
+  readonly valid: boolean;
+}
+
 /** `POST /auth/password/reset` body (OTP flow). */
 export interface ResetPasswordRequest {
   readonly identifier: string;

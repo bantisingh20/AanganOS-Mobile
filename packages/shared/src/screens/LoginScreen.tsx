@@ -119,7 +119,7 @@ export function LoginScreen({ appTitle, onForgotPassword, headerSlot }: LoginScr
                   />
                 </View>
               </View>
-              <Text style={styles.brand} accessibilityRole="header">CommunityOS</Text>
+              <Text style={styles.brand} accessibilityRole="header">UrbanNest</Text>
               <View style={styles.brandPill}>
                 <Text style={styles.brandSub}>{appTitle}</Text>
               </View>

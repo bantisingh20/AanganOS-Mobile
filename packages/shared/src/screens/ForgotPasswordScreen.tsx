@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text } from 'react-native';
-import { Screen } from '../ui/Screen';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { ScreenHeader } from '../ui/ScreenHeader';
 import { AppTextField } from '../ui/AppTextField';
 import { AppButton } from '../ui/AppButton';
 import { FormBanner } from '../ui/FormBanner';
@@ -60,15 +61,20 @@ export function ForgotPasswordScreen({
   };
 
   return (
-    <Screen accessibilityLabel="Forgot password">
-      <Text style={styles.title} accessibilityRole="header">
-        Forgot password
-      </Text>
-      <Text style={styles.subtitle}>
-        Enter your email or phone and we&apos;ll send a one-time code if it&apos;s registered.
-      </Text>
+    <View style={styles.root} accessibilityLabel="Forgot password">
+      <ScreenHeader title="Forgot password" subtitle="Step 1 of 3" onBack={onBackToLogin} />
+      <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+        {/* Icon + intro */}
+        <View style={styles.hero}>
+          <View style={styles.iconBadge}>
+            <Ionicons name="key-outline" size={26} color={theme.color.primary} />
+          </View>
+          <Text style={styles.heroText}>
+            Enter your email or phone and we&apos;ll send a one-time code if it&apos;s registered.
+          </Text>
+        </View>
 
-      <FormBanner message={error.message} tone="error" testID="forgot-error" />
+        <FormBanner message={error.message} tone="error" testID="forgot-error" />
       {sent ? (
         <FormBanner
           message="If that account is registered, a code has been sent."
@@ -104,22 +110,38 @@ export function ForgotPasswordScreen({
           title="Enter code"
           variant="secondary"
           onPress={() => onCodeRequested(identifier.trim())}
-          accessibilityHint="Opens the reset screen to enter your code and new password"
+          accessibilityHint="Opens the code verification screen"
           testID="forgot-continue"
         />
       ) : null}
-      <LinkButton
-        title="Back to login"
-        onPress={onBackToLogin}
-        disabled={submitting}
-        accessibilityHint="Returns to the sign in screen"
-        testID="forgot-back"
-      />
-    </Screen>
+        <LinkButton
+          title="Back to login"
+          onPress={onBackToLogin}
+          disabled={submitting}
+          accessibilityHint="Returns to the sign in screen"
+          testID="forgot-back"
+        />
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  title: { fontSize: theme.fontSize.title, fontWeight: '700', color: theme.color.text },
-  subtitle: { fontSize: theme.fontSize.body, color: theme.color.mutedText },
+  root: { flex: 1, backgroundColor: theme.color.background },
+  body: { flexGrow: 1, padding: theme.spacing.lg, gap: theme.spacing.md },
+  hero: { alignItems: 'center', gap: theme.spacing.sm, marginBottom: theme.spacing.xs },
+  iconBadge: {
+    width: 56,
+    height: 56,
+    borderRadius: 18,
+    backgroundColor: theme.color.accentSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroText: {
+    fontSize: theme.fontSize.body,
+    color: theme.color.mutedText,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
 });
