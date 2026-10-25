@@ -31,12 +31,13 @@ export interface LoginScreenProps {
 
 const NO_ERROR: FormErrorView = { message: '', fieldErrors: {} };
 
-// ============================================================================================
-// DEV ONLY — default login credentials, prefilled to speed up local testing.
-// REMOVE this block (and the two useState initializers below that reference it) before production.
-// ============================================================================================
-const DEV_DEFAULT_IDENTIFIER = '+910000000000';
-const DEV_DEFAULT_PASSWORD = '123';
+// `__DEV__` is a React Native global: true in dev (Metro), false in a release bundle.
+declare const __DEV__: boolean;
+
+// DEV-ONLY login prefill to speed up local testing. In a RELEASE build (__DEV__ === false) the
+// fields start EMPTY — testers never see dev credentials or a prefilled form.
+const DEV_DEFAULT_IDENTIFIER = __DEV__ ? '+917984263575' : '';
+const DEV_DEFAULT_PASSWORD = __DEV__ ? '123' : '';
 
 // Online logo (per request: use an online logo). A neutral community/building glyph on a soft badge.
 const LOGO_URI = 'https://cdn-icons-png.flaticon.com/512/619/619153.png';
