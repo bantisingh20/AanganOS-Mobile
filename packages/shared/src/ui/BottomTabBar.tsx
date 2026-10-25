@@ -33,7 +33,7 @@ export interface BottomTabBarProps {
 export function BottomTabBar({ active, onChange }: BottomTabBarProps) {
   const insets = useSafeInsets();
   return (
-    <View style={[styles.bar, { paddingBottom: theme.spacing.sm + insets.bottom }]} accessibilityRole="tablist">
+    <View style={[styles.bar, { paddingBottom: Math.max(theme.spacing.sm, insets.bottom) }]} accessibilityRole="tablist">
       {TABS.map((tab) => {
         const isActive = tab.key === active;
         const color = isActive ? theme.color.primary : theme.color.mutedText;
@@ -46,8 +46,10 @@ export function BottomTabBar({ active, onChange }: BottomTabBarProps) {
             accessibilityLabel={tab.label}
             accessibilityState={{ selected: isActive }}
           >
-            <Ionicons name={isActive ? tab.iconActive : tab.icon} size={24} color={color} />
-            <Text style={[styles.label, { color }]}>{tab.label}</Text>
+            <View style={[styles.iconWrap, isActive ? styles.iconWrapActive : null]}>
+              <Ionicons name={isActive ? tab.iconActive : tab.icon} size={22} color={color} />
+            </View>
+            <Text style={[styles.label, { color, fontWeight: isActive ? '700' : '500' }]}>{tab.label}</Text>
           </Pressable>
         );
       })}
@@ -61,7 +63,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.color.surface,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: theme.color.border,
-    paddingTop: theme.spacing.sm,
+    paddingTop: theme.spacing.xs,
   },
   tab: {
     flex: 1,
@@ -69,6 +71,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 2,
+    paddingVertical: 2,
   },
-  label: { fontSize: 11, fontWeight: '700' },
+  iconWrap: {
+    paddingHorizontal: 12,
+    paddingVertical: 3,
+    borderRadius: theme.radius.pill,
+  },
+  iconWrapActive: {
+    backgroundColor: theme.color.accentSoft,
+  },
+  label: { fontSize: 11 },
 });

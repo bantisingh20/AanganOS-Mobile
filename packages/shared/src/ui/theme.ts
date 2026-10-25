@@ -1,25 +1,25 @@
 /** Shared design tokens so both apps stay visually consistent (steering: reuse, don't hand-roll). */
 export const theme = {
   color: {
-    primary: '#2563eb',
-    primaryDark: '#1e40af',
+    primary: '#05b872',
+    primaryDark: '#04a263',
     /** Deep brand tone used for the dashboard hero / headers. */
-    hero: '#111a3a',
-    heroAlt: '#1e2a63',
+    hero: '#0b261d',
+    heroAlt: '#0f382a',
     primaryText: '#ffffff',
     text: '#0f172a',
     mutedText: '#64748b',
     border: '#e2e8f0',
     danger: '#dc2626',
     warning: '#d97706',
-    success: '#16a34a',
+    success: '#05b872',
     info: '#0ea5e9',
     /** App page background (slightly tinted, not pure white, so cards read as elevated). */
-    background: '#f1f5f9',
+    background: '#f4f6f8',
     /** Elevated surface (cards, sheets). */
     surface: '#ffffff',
     /** Subtle fill behind the logo badge / chips. */
-    accentSoft: '#e0ecff',
+    accentSoft: '#ecfdf5',
     /** Translucent white for chips/overlays on the hero. */
     onHeroSoft: 'rgba(255,255,255,0.14)',
     disabled: '#94a3b8',
@@ -46,7 +46,7 @@ export const theme = {
       elevation: 3,
     },
     hero: {
-      shadowColor: '#111a3a',
+      shadowColor: '#0b261d',
       shadowOffset: { width: 0, height: 12 },
       shadowOpacity: 0.28,
       shadowRadius: 24,

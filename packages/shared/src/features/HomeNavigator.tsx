@@ -6,6 +6,7 @@ import { BottomTabBar, type TabKey } from '../ui/BottomTabBar';
 import { StatChip } from '../ui/StatChip';
 import { SectionHeading } from '../ui/SectionHeading';
 import { theme } from '../ui/theme';
+import { useSafeInsets } from '../ui/safeInsets';
 import { useAsync } from '../ui/hooks';
 import { useNavStack } from '../ui/navStack';
 import { useAuth } from '../auth/AuthContext';
@@ -262,12 +263,14 @@ export function HomeNavigator({ resources, isAdmin = false, appTitle, offlineQue
       const tab = route.tab;
       return (
         <View style={styles.shell}>
-          <TopBar
-            title={societyName}
-            subtitle={userName}
-            notificationCount={unreadCount}
-            onPressNotifications={() => go({ name: 'notifications' })}
-          />
+          {tab !== 'home' ? (
+            <TopBar
+              title={tab === 'services' ? 'Services' : societyName}
+              subtitle={tab === 'services' ? 'Community & Unit Directory' : userName}
+              notificationCount={unreadCount}
+              onPressNotifications={() => go({ name: 'notifications' })}
+            />
+          ) : null}
           <View style={styles.body}>
             {tab === 'home' ? (
               <DashboardTab
@@ -509,13 +512,14 @@ function DashboardTab({
   onOpenNotifications: () => void;
   onOpenProfile: () => void;
 }) {
+  const insets = useSafeInsets();
   const [segment, setSegment] = useState<'community' | 'personal'>('community');
 
   // Community tiles: role-aware (guard gate ops first, then resident features). Personal tiles:
   // the resident's own-account actions. Each tile is an icon + label in the image-1 grid style.
   const communityTiles: DashTile[] = useMemo(() => {
     const guard: DashTile[] = [
-      { route: { name: 'verifyPass' }, label: 'Verify Pass', icon: 'qr-code', tint: '#2563eb' },
+      { route: { name: 'verifyPass' }, label: 'Verify Pass', icon: 'qr-code', tint: theme.color.primary },
       { route: { name: 'walkInCapture' }, label: 'Register Walk-in', icon: 'person-add', tint: '#0ea5e9' },
       { route: { name: 'entryExit' }, label: 'Entry / Exit', icon: 'swap-horizontal', tint: '#16a34a' },
       { route: { name: 'registerParcel' }, label: 'Register Parcel', icon: 'cube', tint: '#d97706' },
@@ -523,7 +527,7 @@ function DashboardTab({
       { route: { name: 'watchlist' }, label: 'Watchlist', icon: 'shield-checkmark', tint: '#dc2626' },
     ];
     const resident: DashTile[] = [
-      { route: { name: 'inviteVisitor' }, label: 'Visitors', icon: 'person-add', tint: '#2563eb' },
+      { route: { name: 'inviteVisitor' }, label: 'Visitors', icon: 'person-add', tint: theme.color.primary },
       { route: { name: 'myVisitors' }, label: 'My Visitors', icon: 'people', tint: '#8250df' },
       { route: { name: 'announcements' }, label: 'Notices', icon: 'megaphone', tint: '#0ea5e9' },
       { route: { name: 'raiseTicket' }, label: 'Help Desk', icon: 'chatbubble-ellipses', tint: '#16a34a' },
@@ -535,7 +539,7 @@ function DashboardTab({
 
   const personalTiles: DashTile[] = useMemo(
     () => [
-      { route: { name: 'myProfile' }, label: 'My Profile', icon: 'person-circle', tint: '#2563eb' },
+      { route: { name: 'myProfile' }, label: 'My Profile', icon: 'person-circle', tint: theme.color.primary },
       { route: { name: 'myHousehold' }, label: 'My Household', icon: 'home', tint: '#16a34a' },
       { route: { name: 'myVisitors' }, label: 'My Visitors', icon: 'people', tint: '#8250df' },
       { route: { name: 'myParcels' }, label: 'My Parcels', icon: 'cube', tint: '#d97706' },
@@ -551,13 +555,18 @@ function DashboardTab({
 
   return (
     <ScrollView contentContainerStyle={styles.dashScroll} showsVerticalScrollIndicator={false}>
-      {/* Blue gradient header card (reference image 1). */}
-      <View style={styles.dashHeader}>
+      {/* Emerald gradient hero header card */}
+      <View style={[styles.dashHeader, { paddingTop: Math.max(theme.spacing.lg, insets.top + theme.spacing.sm) }]}>
         <View style={styles.dashHeaderBlobA} />
         <View style={styles.dashHeaderBlobB} />
 
         <View style={styles.dashHeaderTop}>
-          <Text style={styles.dashBrand}>SOCIETY APP</Text>
+          <View style={styles.dashBrandRow}>
+            <View style={styles.dashBrandIcon}>
+              <Ionicons name="home" size={13} color="#fff" />
+            </View>
+            <Text style={styles.dashBrand}>URBANNEST</Text>
+          </View>
           <View style={styles.dashHeaderIcons}>
             {/* SOS is a guard gate operation (needs Create SosAlert) — only security can raise it.
                 Residents don't have that permission, so the button is security-only. */}
@@ -594,10 +603,14 @@ function DashboardTab({
             <Text style={styles.dashInitials}>{initialsOf(userName)}</Text>
           </View>
           <View style={styles.dashProfileText}>
+            <Text style={styles.dashGreeting}>{greeting()},</Text>
             <Text style={styles.dashName} numberOfLines={1}>{userName}</Text>
-            <Text style={styles.dashUnit} numberOfLines={1}>
-              {unitLabel ? `${unitLabel} · ` : ''}{societyName}
-            </Text>
+            <View style={styles.dashUnitRow}>
+              <Ionicons name="location-outline" size={12} color="rgba(255,255,255,0.85)" />
+              <Text style={styles.dashUnit} numberOfLines={1}>
+                {unitLabel ? `${unitLabel} • ` : ''}{societyName}
+              </Text>
+            </View>
           </View>
         </Pressable>
 
@@ -960,7 +973,16 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.08)',
   },
   dashHeaderTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  dashBrand: { color: 'rgba(255,255,255,0.85)', fontSize: theme.fontSize.caption, fontWeight: '800', letterSpacing: 1 },
+  dashBrandRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  dashBrandIcon: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dashBrand: { color: 'rgba(255,255,255,0.95)', fontSize: 11, fontWeight: '800', letterSpacing: 1 },
   dashHeaderIcons: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
   dashIconBtn: {
     width: 34, height: 34, borderRadius: 17,
@@ -983,8 +1005,19 @@ const styles = StyleSheet.create({
   },
   dashInitials: { color: '#fff', fontSize: theme.fontSize.body, fontWeight: '800' },
   dashProfileText: { flex: 1 },
+  dashGreeting: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: theme.fontSize.caption,
+    fontWeight: '600',
+  },
   dashName: { color: '#fff', fontSize: theme.fontSize.title, fontWeight: '800' },
-  dashUnit: { color: 'rgba(255,255,255,0.8)', fontSize: theme.fontSize.caption, marginTop: 2 },
+  dashUnitRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+  },
+  dashUnit: { color: 'rgba(255,255,255,0.85)', fontSize: theme.fontSize.caption },
   dashTabs: {
     flexDirection: 'row',
     backgroundColor: 'rgba(255,255,255,0.15)',
@@ -997,13 +1030,15 @@ const styles = StyleSheet.create({
   dashTabTextActive: { color: theme.color.primary },
   dashGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: theme.spacing.md },
   dashTile: {
-    width: '48.5%',
+    width: '48.2%',
     backgroundColor: theme.color.surface,
     borderRadius: theme.radius.lg,
     paddingVertical: theme.spacing.lg,
     paddingHorizontal: theme.spacing.md,
     alignItems: 'center',
     gap: theme.spacing.sm,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
     ...theme.shadow.soft,
   },
   dashTilePressed: { opacity: 0.85, transform: [{ scale: 0.98 }] },
