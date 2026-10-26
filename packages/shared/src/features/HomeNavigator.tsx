@@ -5,9 +5,16 @@ import { TopBar } from '../ui/TopBar';
 import { BottomTabBar, type TabKey } from '../ui/BottomTabBar';
 import { StatChip } from '../ui/StatChip';
 import { SectionHeading } from '../ui/SectionHeading';
+import { EntityCard, type MetaChip } from '../ui/EntityCard';
 import { theme } from '../ui/theme';
 import { useSafeInsets } from '../ui/safeInsets';
 import { useAsync } from '../ui/hooks';
+import type { PagedData } from '../models/envelope';
+import type { Visitor } from '../models/gate';
+import { VisitorStatus } from '../models/gate';
+import type { Parcel } from '../models/parcel';
+import { ParcelStatus } from '../models/parcel';
+import { gateStatusTone, parcelStatusTone, humanizeCode } from './shared/status';
 import { useNavStack } from '../ui/navStack';
 import { useAuth } from '../auth/AuthContext';
 import { LogoutButton } from '../screens/LogoutButton';
@@ -274,6 +281,8 @@ export function HomeNavigator({ resources, isAdmin = false, appTitle, offlineQue
           <View style={styles.body}>
             {tab === 'home' ? (
               <DashboardTab
+                resources={resources}
+                routeKey={route.name}
                 isResident={isResident}
                 isSecurity={isSecurity}
                 userName={userName}
@@ -490,6 +499,8 @@ function todayLabel(): string {
  * shows the resident's own-account tiles.
  */
 function DashboardTab({
+  resources,
+  routeKey,
   isResident,
   isSecurity,
   userName,
@@ -501,6 +512,8 @@ function DashboardTab({
   onOpenNotifications,
   onOpenProfile,
 }: {
+  resources: ResourceClients;
+  routeKey: string;
   isResident: boolean;
   isSecurity: boolean;
   userName: string;
@@ -514,6 +527,34 @@ function DashboardTab({
 }) {
   const insets = useSafeInsets();
   const [segment, setSegment] = useState<'community' | 'personal'>('community');
+
+  const pendingWalkIns = useAsync<PagedData<Visitor>>(
+    (signal) =>
+      isResident
+        ? resources.gate.listVisitors({ pageSize: 5 }, { status: VisitorStatus.Pending }, { signal })
+        : Promise.resolve(emptyPage<Visitor>()),
+    [resources, isResident, routeKey],
+  );
+
+  const awaitingParcels = useAsync<PagedData<Parcel>>(
+    (signal) =>
+      isResident
+        ? resources.parcels.listParcels(
+            { pageSize: 5, sort: 'receivedAtUtc:desc' },
+            { status: ParcelStatus.ReadyForPickup },
+            { signal },
+          )
+        : Promise.resolve(emptyPage<Parcel>()),
+    [resources, isResident, routeKey],
+  );
+
+  const approvedWalkIns = useAsync<PagedData<Visitor>>(
+    (signal) =>
+      isSecurity
+        ? resources.gate.listVisitors({ pageSize: 5 }, { status: VisitorStatus.Approved }, { signal })
+        : Promise.resolve(emptyPage<Visitor>()),
+    [resources, isSecurity, routeKey],
+  );
 
   // Community tiles: role-aware (guard gate ops first, then resident features). Personal tiles:
   // the resident's own-account actions. Each tile is an icon + label in the image-1 grid style.
@@ -641,6 +682,72 @@ function DashboardTab({
         ))}
       </View>
 
+      {isResident ? (
+        <AttentionSection
+          title="Walk-ins to approve"
+          count={pendingWalkIns.data?.totalCount ?? 0}
+          icon="people"
+          tint="#bf8700"
+          onViewAll={() => onNavigate({ name: 'walkInApprovals' })}
+        >
+          {(pendingWalkIns.data?.items ?? []).map((v) => (
+            <EntityCard
+              key={v.id}
+              title={v.name}
+              icon="person"
+              tint="#bf8700"
+              badge={{ label: humanizeCode(v.status), tone: gateStatusTone(v.status) }}
+              meta={visitorMeta(v)}
+              onPress={() => onNavigate({ name: 'walkInApprovals' })}
+            />
+          ))}
+        </AttentionSection>
+      ) : null}
+
+      {isResident ? (
+        <AttentionSection
+          title="Parcels to collect"
+          count={awaitingParcels.data?.totalCount ?? 0}
+          icon="cube"
+          tint="#cf5500"
+          onViewAll={() => onNavigate({ name: 'myParcels' })}
+        >
+          {(awaitingParcels.data?.items ?? []).map((p) => (
+            <EntityCard
+              key={p.id}
+              title={p.trackingNumber}
+              icon="cube"
+              tint="#cf5500"
+              badge={{ label: humanizeCode(p.status), tone: parcelStatusTone(p.status) }}
+              meta={parcelMeta(p)}
+              onPress={() => onNavigate({ name: 'myParcels' })}
+            />
+          ))}
+        </AttentionSection>
+      ) : null}
+
+      {isSecurity ? (
+        <AttentionSection
+          title="Approved walk-ins"
+          count={approvedWalkIns.data?.totalCount ?? 0}
+          icon="checkmark-done"
+          tint="#1a7f37"
+          onViewAll={() => onNavigate({ name: 'walkInApprovals' })}
+        >
+          {(approvedWalkIns.data?.items ?? []).map((v) => (
+            <EntityCard
+              key={v.id}
+              title={v.name}
+              icon="person"
+              tint="#1a7f37"
+              badge={{ label: humanizeCode(v.status), tone: gateStatusTone(v.status) }}
+              meta={visitorMeta(v)}
+              onPress={() => onNavigate({ name: 'walkInApprovals' })}
+            />
+          ))}
+        </AttentionSection>
+      ) : null}
+
       {/* Explore all services */}
       <Pressable
         onPress={onOpenServices}
@@ -680,6 +787,67 @@ function DashTab({ label, active, onPress }: { label: string; active: boolean; o
     >
       <Text style={[styles.dashTabText, active ? styles.dashTabTextActive : null]}>{label}</Text>
     </Pressable>
+  );
+}
+
+function emptyPage<T>(): PagedData<T> {
+  return { items: [], page: 1, pageSize: 0, totalCount: 0 };
+}
+
+function visitorMeta(v: Visitor): MetaChip[] {
+  const meta: MetaChip[] = [{ icon: 'pricetag-outline', label: humanizeCode(v.category) }];
+  if (v.whomToMeet) meta.push({ icon: 'home-outline', label: v.whomToMeet });
+  if (v.phone) meta.push({ icon: 'call-outline', label: v.phone });
+  return meta;
+}
+
+function parcelMeta(p: Parcel): MetaChip[] {
+  return [
+    { icon: 'business-outline', label: p.provider },
+    { icon: 'pricetag-outline', label: humanizeCode(p.category) },
+  ];
+}
+
+function AttentionSection({
+  title,
+  count,
+  icon,
+  tint,
+  onViewAll,
+  children,
+}: {
+  title: string;
+  count: number;
+  icon: keyof typeof Ionicons.glyphMap;
+  tint: string;
+  onViewAll: () => void;
+  children: React.ReactNode;
+}) {
+  if (count <= 0) return null;
+  return (
+    <View style={styles.attentionSection}>
+      <SectionHeading
+        title={title}
+        trailing={
+          <View style={[styles.attentionCount, { backgroundColor: `${tint}1f` }]}>
+            <Ionicons name={icon} size={13} color={tint} />
+            <Text style={[styles.attentionCountText, { color: tint }]}>
+              {count} need{count === 1 ? 's' : ''} your attention
+            </Text>
+          </View>
+        }
+      />
+      <View style={styles.attentionList}>{children}</View>
+      <Pressable
+        onPress={onViewAll}
+        accessibilityRole="button"
+        accessibilityLabel={`View all · ${title}`}
+        style={({ pressed }) => [styles.attentionViewAll, pressed ? styles.attentionViewAllPressed : null]}
+      >
+        <Text style={[styles.attentionViewAllText, { color: tint }]}>View all</Text>
+        <Ionicons name="arrow-forward" size={16} color={tint} />
+      </Pressable>
+    </View>
   );
 }
 
@@ -1044,6 +1212,20 @@ const styles = StyleSheet.create({
   dashTilePressed: { opacity: 0.85, transform: [{ scale: 0.98 }] },
   dashTileIcon: { width: 56, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   dashTileLabel: { fontSize: theme.fontSize.label, fontWeight: '700', color: theme.color.text, textAlign: 'center' },
+  attentionSection: { marginTop: theme.spacing.lg, gap: theme.spacing.md },
+  attentionCount: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: theme.radius.pill,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+  },
+  attentionCountText: { fontSize: theme.fontSize.caption, fontWeight: '700' },
+  attentionList: { gap: theme.spacing.md },
+  attentionViewAll: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: theme.spacing.sm },
+  attentionViewAllPressed: { opacity: 0.7 },
+  attentionViewAllText: { fontSize: theme.fontSize.label, fontWeight: '800' },
   // 2-column quick-action grid: each tile is ~half width, wraps to the next row.
   quickGrid: {
     flexDirection: 'row',
