@@ -1,7 +1,9 @@
-# CommunityOS Mobile
+# AanganOS Mobile
 
-React Native workspace for the two CommunityOS apps — **Resident/Owner** and **Security/Guard** —
-plus a shared internal core. iOS **and** Android.
+React Native workspace for the AanganOS mobile app — one **role-aware Resident app** that serves
+resident, guard, and admin features based on the signed-in user's roles — plus a shared internal
+core. iOS **and** Android. (A separate Guard app existed earlier; it was merged into the one app and
+removed — guard/gate features now live in `@communityos/shared` and are shown by role.)
 
 ## Setup choice: Expo (SDK 54) + dev client, npm workspaces monorepo
 
@@ -28,8 +30,7 @@ CommunityOS-Mobile/
       auth/               # SecureTokenStore + AuthService
       notifications/      # registerDevice() (OneSignal -> backend device)
       ui/                 # AppButton, AppTextField, Screen, theme (accessible)
-  apps/resident/          # Resident/Owner app (Expo)
-  apps/guard/             # Security/Guard app (Expo)
+  apps/urbannest/         # The single role-aware app (Expo) — resident/guard/admin by role
 ```
 
 ## Shared core (`@communityos/shared`)
@@ -49,12 +50,10 @@ CommunityOS-Mobile/
 ## Running
 
 ```
-cp .env.example apps/resident/.env   # fill in real values (never commit)
-cp .env.example apps/guard/.env
+cp .env.example apps/urbannest/.env   # fill in real values (never commit)
 npm install
 npm run typecheck                     # type-checks the shared package
-npm run resident                      # expo start --dev-client (needs a dev client build)
-npm run guard
+npm run urbannest                     # expo start --dev-client (needs a dev client build)
 ```
 
 Native builds require a one-time `expo prebuild` + a dev client build (`expo run:ios` /

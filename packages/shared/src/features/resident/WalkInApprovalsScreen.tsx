@@ -118,6 +118,7 @@ function VisitorList({
 }) {
   const [filter, setFilter] = useState<StatusFilter>('pending');
   const [page, setPage] = useState(1);
+  const [showFilter, setShowFilter] = useState(false);
   const [rejecting, setRejecting] = useState<Visitor | null>(null);
   const [reason, setReason] = useState('');
   // Registered-date RANGE filter — DEFAULTS TO TODAY→TODAY so the screen opens on today's walk-ins.
@@ -154,26 +155,39 @@ function VisitorList({
     return resources.gate.rejectWalkIn(id, residentId, r || undefined);
   });
 
-  // SECURITY admits an APPROVED walk-in at the gate → records a gate entry (visitorId), which then
-  // shows on the Entry/Exit tab (On-site). No new endpoint: gate.recordEntry already accepts a
-  // visitorId. Residents never admit at the gate, so this is security-only.
-  const admit = useAsyncAction((visitorId: string) => resources.gate.recordEntry({ visitorId }));
-  const [notice, setNotice] = useState<string | null>(null);
-  // Walk-ins whose entry has already been recorded this session → hide "Record entry" so the guard
-  // can't double-admit. The backend also rejects a second entry while one is open (CONFLICT), so a
-  // conflict is treated the same as "already admitted".
-  const [admittedIds, setAdmittedIds] = useState<Set<string>>(new Set());
-  const markAdmitted = (id: string) => setAdmittedIds((prev) => new Set(prev).add(id));
+  // SECURITY checks an APPROVED walk-in in (records a gate entry) then out (records the exit). The
+  // real on-site state lives in the entry/exit log, not on the visitor, so load the community's OPEN
+  // entries and key the button off that — it survives reload. No new endpoint.
+  const openEvents = useAsync(
+    (signal) =>
+      isSecurity
+        ? resources.gate.listEntryExitEvents({ pageSize: 200 }, { open: true }, { signal })
+        : Promise.resolve(null),
+    [isSecurity, page, filter, fromDay, toDay],
+  );
+  const onSiteVisitorIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const e of openEvents.data?.items ?? []) {
+      if (e.visitorId) ids.add(e.visitorId);
+    }
+    return ids;
+  }, [openEvents.data]);
+
+  const checkIn = useAsyncAction((visitorId: string) => resources.gate.recordEntry({ visitorId }));
+  const checkOut = useAsyncAction((visitorId: string) => resources.gate.recordExit({ visitorId }));
+
+  const reloadAll = () => { list.reload(); openEvents.reload(); };
 
   const items = list.data?.items ?? [];
   const total = list.data?.totalCount ?? 0;
 
   // A resident may act only on their own PENDING requests; security is read-only for approve/reject.
   const canAct = (v: Visitor) => !isSecurity && Boolean(residentId) && v.status === VisitorStatus.Pending;
-  // Security admits an APPROVED + admittable walk-in → records the gate entry. Hidden once admitted
-  // this session (and the backend rejects a duplicate open entry regardless).
-  const canAdmit = (v: Visitor) =>
-    isSecurity && v.status === VisitorStatus.Approved && v.isAdmittable && !admittedIds.has(v.id);
+  // Security checks an APPROVED + admittable walk-in IN (no open entry yet) or OUT (open entry).
+  const canCheckIn = (v: Visitor) =>
+    isSecurity && v.status === VisitorStatus.Approved && v.isAdmittable && !onSiteVisitorIds.has(v.id);
+  const canCheckOut = (v: Visitor) =>
+    isSecurity && v.status === VisitorStatus.Approved && onSiteVisitorIds.has(v.id);
 
   const switchFilter = (f: StatusFilter) => { setPage(1); setFilter(f); };
 
@@ -182,7 +196,7 @@ function VisitorList({
     if (await reject.run(rejecting.id, reason.trim())) {
       setRejecting(null);
       setReason('');
-      list.reload();
+      reloadAll();
     }
   };
 
@@ -211,18 +225,29 @@ function VisitorList({
         })}
       </View>
 
-      {/* Registered-date RANGE filter — a soft "glass" card with From/To pickers + quick chips. */}
+      {/* Filter card — collapsed to just the header; tap to reveal the From/To pickers + chips. */}
       <View style={styles.dateCard}>
-        <View style={styles.dateCardHead}>
+        <Pressable
+          onPress={() => setShowFilter((s) => !s)}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: showFilter }}
+          accessibilityLabel="Filter by date"
+          style={styles.dateCardHead}
+        >
           <View style={styles.dateCardTitleWrap}>
             <View style={styles.dateIcon}>
               <Ionicons name="calendar-outline" size={16} color={theme.color.primary} />
             </View>
-            <Text style={styles.dateCardTitle}>Filter by date</Text>
+            <Text style={styles.dateCardTitle}>Filter</Text>
           </View>
-          <Text style={styles.dateRangeHint} numberOfLines={1}>{rangeLabel(fromDay, toDay)}</Text>
-        </View>
+          <View style={styles.filterToggleRight}>
+            <Text style={styles.dateRangeHint} numberOfLines={1}>{rangeLabel(fromDay, toDay)}</Text>
+            <Ionicons name={showFilter ? 'chevron-up' : 'chevron-down'} size={18} color={theme.color.mutedText} />
+          </View>
+        </Pressable>
 
+        {showFilter ? (
+        <>
         <View style={styles.dateFields}>
           <View style={styles.flex}>
             <DateField
@@ -255,11 +280,13 @@ function VisitorList({
           <DateChip label="30 days" active={isRange(fromDay, toDay, 29)} onPress={() => { setPage(1); setFromDay(daysAgo(29)); setToDay(startOfToday()); }} />
           <DateChip label="All" active={fromDay === null && toDay === null} onPress={() => { setPage(1); setFromDay(null); setToDay(null); }} />
         </View>
+        </>
+        ) : null}
       </View>
 
       {approve.error ? <FormBanner message={approve.error.message} tone="error" /> : null}
-      {admit.error ? <FormBanner message={admit.error.message} tone="error" /> : null}
-      {notice ? <FormBanner message={notice} tone="success" /> : null}
+      {checkIn.error ? <FormBanner message={checkIn.error.message} tone="error" /> : null}
+      {checkOut.error ? <FormBanner message={checkOut.error.message} tone="error" /> : null}
 
       <AsyncBoundary
         loading={list.loading}
@@ -300,7 +327,7 @@ function VisitorList({
                       title="Approve"
                       loading={approve.running}
                       disabled={reject.running}
-                      onPress={async () => { if (await approve.run(v.id)) list.reload(); }}
+                      onPress={async () => { if (await approve.run(v.id)) reloadAll(); }}
                       accessibilityHint={`Approve ${v.name}`}
                     />
                   </View>
@@ -316,29 +343,38 @@ function VisitorList({
                 </View>
               ) : null}
 
-              {canAdmit(v) ? (
+              {canCheckIn(v) ? (
                 <AppButton
-                  title="Record entry"
-                  loading={admit.running}
+                  title="Check in"
+                  loading={checkIn.running}
                   onPress={async () => {
-                    setNotice(null);
-                    admit.reset();
-                    const ok = await admit.run(v.id);
-                    if (ok) {
-                      markAdmitted(v.id); // hide the button — entry recorded
-                      setNotice(`${v.name} admitted — entry recorded. See the Entry / Exit tab.`);
-                    } else if (admit.error && /already on-site|already an open|conflict/i.test(admit.error.message)) {
-                      // Backend says an entry is already open for this visitor → treat as admitted.
-                      markAdmitted(v.id);
-                      setNotice(`${v.name} is already on-site. Record their exit from the Entry / Exit tab.`);
+                    checkIn.reset();
+                    if (await checkIn.run(v.id)) {
+                      reloadAll();
                     }
                   }}
-                  accessibilityHint={`Record ${v.name}'s entry at the gate`}
+                  accessibilityHint={`Check ${v.name} in at the gate`}
                 />
-              ) : isSecurity && v.status === VisitorStatus.Approved && admittedIds.has(v.id) ? (
-                <View style={styles.enteredChip}>
-                  <Ionicons name="checkmark-circle" size={16} color={theme.color.success} />
-                  <Text style={styles.enteredText}>Entry recorded</Text>
+              ) : canCheckOut(v) ? (
+                <View style={styles.onSiteRow}>
+                  <View style={styles.enteredChip}>
+                    <Ionicons name="location" size={16} color={theme.color.success} />
+                    <Text style={styles.enteredText}>On-site</Text>
+                  </View>
+                  <View style={styles.flex}>
+                    <AppButton
+                      title="Check out"
+                      variant="secondary"
+                      loading={checkOut.running}
+                      onPress={async () => {
+                        checkOut.reset();
+                        if (await checkOut.run(v.id)) {
+                          reloadAll();
+                        }
+                      }}
+                      accessibilityHint={`Check ${v.name} out at the gate`}
+                    />
+                  </View>
                 </View>
               ) : null}
             </View>
@@ -433,6 +469,7 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.md,
     ...theme.shadow.soft,
   },
+  filterToggleRight: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, flexShrink: 1 },
   dateCardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.sm },
   dateCardTitleWrap: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   dateIcon: { width: 28, height: 28, borderRadius: theme.radius.sm, alignItems: 'center', justifyContent: 'center', backgroundColor: `${theme.color.primary}1f` },
@@ -469,6 +506,7 @@ const styles = StyleSheet.create({
   cardMeta: { fontSize: theme.fontSize.caption, color: theme.color.mutedText },
   row: { flexDirection: 'row', gap: theme.spacing.sm },
   flex: { flex: 1 },
+  onSiteRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
   enteredChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: theme.spacing.xs },
   enteredText: { color: theme.color.success, fontWeight: '700', fontSize: theme.fontSize.caption },
   sheetScroll: { gap: theme.spacing.md, paddingTop: theme.spacing.sm, paddingBottom: theme.spacing.sm },

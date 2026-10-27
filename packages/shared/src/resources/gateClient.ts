@@ -6,6 +6,9 @@ import type {
   CreateVisitPassResult,
   Visitor,
   VerifyVisitPassResult,
+  ScanAccessResult,
+  RegisterWalkInResult,
+  VehicleLookupResult,
   RecurringVisitor,
   EntryExitEvent,
 } from '../models/gate';
@@ -53,6 +56,7 @@ export interface CreateVisitPassBody {
   readonly validUntilUtc?: string;
   readonly maxUses?: number;
   readonly phone?: string;
+  readonly email?: string;
   readonly vehicleNumber?: string;
   readonly vehicleType?: string;
   readonly numberOfPersons?: number;
@@ -66,6 +70,7 @@ export interface RegisterWalkInBody {
   readonly hostUnitId: string;
   readonly name: string;
   readonly phone?: string;
+  readonly email?: string;
   readonly category: string;
   readonly photoFileId?: string;
   readonly vehicleNumber?: string;
@@ -147,6 +152,23 @@ export class GateClient {
     });
   }
 
+  scanAccess(
+    input: { qrToken?: string; otp?: string; gateId?: string; gateLabel?: string },
+    idempotencyKey?: string,
+  ): Promise<ScanAccessResult> {
+    return this.api.post<ScanAccessResult>('/api/v1/visit-passes/scan', {
+      body: { qrToken: input.qrToken, otp: input.otp, gateId: input.gateId, gateLabel: input.gateLabel },
+      idempotencyKey: idempotencyKey ?? this.idempotencyKey(),
+    });
+  }
+
+  lookupVehicle(plate: string, options?: { signal?: AbortSignal }): Promise<VehicleLookupResult> {
+    return this.api.get<VehicleLookupResult>(
+      `/api/v1/gate/vehicle-lookup?plate=${encodeURIComponent(plate)}`,
+      options,
+    );
+  }
+
   listVisitPasses(
     query: ListQuery = {},
     filters: VisitPassListFilters = {},
@@ -166,9 +188,10 @@ export class GateClient {
 
   // --- Walk-ins / visitors (Req 24.x) --------------------------------------------------------
 
-  /** Guard registers a walk-in; starts pending, host residents notified (Req 24.1). */
-  registerWalkIn(body: RegisterWalkInBody, idempotencyKey?: string): Promise<Visitor> {
-    return this.api.post<Visitor>('/api/v1/visitors', {
+  /** Guard registers a walk-in. Pending + residents notified, OR auto-approved (QR+OTP, checked in)
+   *  when the community's approval-required config is off (Req 24.1). */
+  registerWalkIn(body: RegisterWalkInBody, idempotencyKey?: string): Promise<RegisterWalkInResult> {
+    return this.api.post<RegisterWalkInResult>('/api/v1/visitors', {
       body,
       idempotencyKey: idempotencyKey ?? this.idempotencyKey(),
     });

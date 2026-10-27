@@ -1,8 +1,8 @@
 {
-  "name": "@communityos/resident",
+  "name": "@communityos/aanganos",
   "version": "0.1.0",
   "private": true,
-  "description": "CommunityOS Resident/Owner app (iOS + Android).",
+  "description": "AanganOS role-aware app — resident/guard/admin by role (iOS + Android).",
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
@@ -16,8 +16,10 @@
     "@react-native/virtualized-lists": "0.81.4",
     "expo": "54.0.1",
     "expo-camera": "~17.0.10",
+    "expo-file-system": "~19.0.24",
     "expo-image-picker": "~17.0.11",
     "expo-secure-store": "15.0.7",
+    "expo-sharing": "~14.0.8",
     "expo-status-bar": "3.0.8",
     "onesignal-expo-plugin": "2.0.3",
     "qrcode-generator": "^2.0.4",

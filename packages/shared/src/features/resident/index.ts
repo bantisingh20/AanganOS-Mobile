@@ -13,3 +13,4 @@ export * from './RaiseTicketScreen';
 export * from './TicketListScreen';
 export * from './TicketDetailScreen';
 export * from './AnnouncementsScreen';
+export * from './RegisterScreen';

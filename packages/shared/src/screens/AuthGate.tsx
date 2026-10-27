@@ -4,11 +4,14 @@ import { AuthNavigator } from './AuthNavigator';
 import { useAuth } from '../auth/AuthContext';
 import { theme } from '../ui/theme';
 import type { AuthService } from '../auth/authService';
+import type { ResourceClients } from '../resources';
 
 export interface AuthGateProps {
   /** App name for headers, e.g. "Resident" / "Guard". */
   appTitle: string;
   auth: AuthService;
+  /** Resource clients to enable anonymous self-registration in the auth flow. Omit to disable it. */
+  resources?: ResourceClients;
   /** The authenticated app (e.g. the app's home placeholder). Shown only when signed in. */
   children: React.ReactNode;
 }
@@ -22,7 +25,7 @@ export interface AuthGateProps {
  * flow automatically (the API client clears the session; logout updates the context). Must be
  * rendered inside an {@link AuthProvider}.
  */
-export function AuthGate({ appTitle, auth, children }: AuthGateProps) {
+export function AuthGate({ appTitle, auth, resources, children }: AuthGateProps) {
   const { status } = useAuth();
 
   if (status === 'restoring') {
@@ -38,7 +41,7 @@ export function AuthGate({ appTitle, auth, children }: AuthGateProps) {
   }
 
   if (status === 'unauthenticated') {
-    return <AuthNavigator appTitle={appTitle} auth={auth} />;
+    return <AuthNavigator appTitle={appTitle} auth={auth} {...(resources ? { resources } : {})} />;
   }
 
   return <>{children}</>;

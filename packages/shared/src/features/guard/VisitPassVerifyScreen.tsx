@@ -6,12 +6,10 @@ import { FormScreen } from '../../ui/FormScreen';
 import { AppTextField } from '../../ui/AppTextField';
 import { AppButton } from '../../ui/AppButton';
 import { FormBanner } from '../../ui/FormBanner';
-import { Badge } from '../../ui/Badge';
 import { useAsyncAction } from '../../ui/hooks';
 import { theme } from '../../ui/theme';
 import type { ResourceClients } from '../../resources';
-import type { VerifyVisitPassResult, EntryExitEvent } from '../../models/gate';
-import { gateStatusTone, humanizeCode } from '../shared/status';
+import type { ScanAccessResult } from '../../models/gate';
 
 export interface VisitPassVerifyScreenProps {
   resources: ResourceClients;
@@ -37,28 +35,19 @@ type ManualMode = 'otp' | 'token';
  */
 export function VisitPassVerifyScreen({ resources, onBack }: VisitPassVerifyScreenProps) {
   const [permission, requestPermission] = useCameraPermissions();
-  const [result, setResult] = useState<VerifyVisitPassResult | null>(null);
-  const [entry, setEntry] = useState<EntryExitEvent | null>(null);
+  const [result, setResult] = useState<ScanAccessResult | null>(null);
   const [manualOpen, setManualOpen] = useState(false);
   const [manualMode, setManualMode] = useState<ManualMode>('otp');
   const [otp, setOtp] = useState('');
   const [token, setToken] = useState('');
-  // Guards the continuous scanner: once a code fires a verify we stop accepting new scans until the
-  // guard taps "Scan again" (prevents the same QR re-triggering verify dozens of times per second).
+  // Guards the continuous scanner: once a code fires a scan we stop accepting new scans until the
+  // guard taps "Scan again" (prevents the same QR re-triggering the scan dozens of times per second).
   const lockRef = useRef(false);
 
   const verify = useAsyncAction((input: { qrToken?: string; otp?: string }) =>
-    resources.gate.verifyVisitPass(input).then((r) => {
+    resources.gate.scanAccess(input).then((r) => {
       setResult(r);
-      setEntry(null);
       return r;
-    }),
-  );
-
-  const admit = useAsyncAction((visitPassId: string) =>
-    resources.gate.recordEntry({ visitPassId }).then((e) => {
-      setEntry(e);
-      return e;
     }),
   );
 
@@ -74,9 +63,7 @@ export function VisitPassVerifyScreen({ resources, onBack }: VisitPassVerifyScre
   const reset = () => {
     lockRef.current = false;
     setResult(null);
-    setEntry(null);
     verify.reset();
-    admit.reset();
   };
 
   const submitManual = () => {
@@ -142,65 +129,22 @@ export function VisitPassVerifyScreen({ resources, onBack }: VisitPassVerifyScre
         )}
       </View>
 
-      {/* Result card — opens on any verify (scan or manual). Accepted → admit; rejected → reason. */}
+      {/* Result card — opens on any scan (scan or manual). Shows checked-in / out / closed. */}
       {result ? (
         <View style={styles.card}>
-          {result.accepted && result.pass ? (
-            <>
-              <View style={styles.cardHead}>
-                <View style={[styles.avatar, { backgroundColor: `${theme.color.success}1f` }]}>
-                  <Ionicons name="checkmark-circle" size={26} color={theme.color.success} />
-                </View>
-                <View style={styles.cardHeadText}>
-                  <Text style={styles.visitor} numberOfLines={1}>{result.pass.visitorName}</Text>
-                  <Text style={styles.sub}>
-                    Visit {result.pass.useCount} of {result.pass.maxUses}
-                  </Text>
-                </View>
-                <Badge label={humanizeCode(result.pass.status)} tone={gateStatusTone(result.pass.status)} />
-              </View>
+          <View style={styles.cardHead}>
+            <View style={[styles.avatar, { backgroundColor: `${scanTone(result.action)}1f` }]}>
+              <Ionicons name={scanIcon(result.action)} size={26} color={scanTone(result.action)} />
+            </View>
+            <View style={styles.cardHeadText}>
+              <Text style={styles.visitor} numberOfLines={1}>{result.name || scanTitle(result.action)}</Text>
+              <Text style={styles.sub}>{scanTitle(result.action)}</Text>
+            </View>
+          </View>
 
-              {result.pass.vehicleNumber ? (
-                <View style={styles.metaRow}>
-                  <Ionicons name="car-outline" size={16} color={theme.color.mutedText} />
-                  <Text style={styles.metaText}>{result.pass.vehicleNumber}</Text>
-                </View>
-              ) : null}
-
-              {entry ? (
-                <View style={styles.entryOk}>
-                  <Ionicons name="log-in" size={18} color={theme.color.success} />
-                  <Text style={styles.entryOkText}>Entry recorded at {formatTime(entry.entryTsUtc)}</Text>
-                </View>
-              ) : (
-                <>
-                  {admit.error ? <FormBanner message={admit.error.message} tone="error" /> : null}
-                  <AppButton
-                    title="Record entry"
-                    loading={admit.running}
-                    onPress={() => admit.run(result.pass!.id)}
-                    accessibilityHint="Record this visitor's entry at the gate"
-                  />
-                </>
-              )}
-            </>
-          ) : (
-            <>
-              <View style={styles.cardHead}>
-                <View style={[styles.avatar, { backgroundColor: `${theme.color.danger}1f` }]}>
-                  <Ionicons name="close-circle" size={26} color={theme.color.danger} />
-                </View>
-                <View style={styles.cardHeadText}>
-                  <Text style={styles.visitor}>Pass not valid</Text>
-                  <Text style={styles.sub}>Do not admit this visitor</Text>
-                </View>
-              </View>
-              <FormBanner
-                message={result.rejectionReason ?? 'The visit pass is not valid for entry.'}
-                tone="error"
-              />
-            </>
-          )}
+          {result.reason ? (
+            <FormBanner message={result.reason} tone={result.action === 'rejected' || result.action === 'closed' ? 'error' : 'success'} />
+          ) : null}
 
           <AppButton
             title="Scan again"
@@ -286,12 +230,29 @@ export function VisitPassVerifyScreen({ resources, onBack }: VisitPassVerifyScre
   );
 }
 
-/** Local HH:MM for a captured timestamp — a gate guard wants the time, not an ISO string. */
-function formatTime(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime())
-    ? iso
-    : d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+function scanTone(action: ScanAccessResult['action']): string {
+  switch (action) {
+    case 'checked_in': return theme.color.success;
+    case 'checked_out': return theme.color.info;
+    default: return theme.color.danger;
+  }
+}
+
+function scanIcon(action: ScanAccessResult['action']): keyof typeof Ionicons.glyphMap {
+  switch (action) {
+    case 'checked_in': return 'log-in';
+    case 'checked_out': return 'log-out';
+    default: return 'close-circle';
+  }
+}
+
+function scanTitle(action: ScanAccessResult['action']): string {
+  switch (action) {
+    case 'checked_in': return 'Checked in';
+    case 'checked_out': return 'Checked out';
+    case 'closed': return 'Access closed';
+    default: return 'Not valid';
+  }
 }
 
 const RETICLE = 200;

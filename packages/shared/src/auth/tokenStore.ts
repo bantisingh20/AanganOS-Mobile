@@ -77,6 +77,15 @@ export function isPlatformSuperAdminToken(token: string): boolean {
   return claims?.['communityos:is_platform_super_admin'] === 'true';
 }
 
+/** The granted permissions from the token's `communityos:perm` claim(s), each "ResourceType:actionInt". */
+export function permissionsFromToken(token: string): string[] {
+  const claims = readJwtClaims(token);
+  const raw = claims?.['communityos:perm'];
+  if (Array.isArray(raw)) return raw.filter((p): p is string => typeof p === 'string');
+  if (typeof raw === 'string' && raw.length > 0) return [raw];
+  return [];
+}
+
 /** Decode a standard base64 string to a UTF-8 string across RN/Hermes (atob) and Node (Buffer). */
 function decodeBase64(b64: string): string {
   const g = globalThis as { atob?: (s: string) => string; Buffer?: { from(s: string, enc: string): { toString(enc: string): string } } };
@@ -135,6 +144,11 @@ export class SecureTokenStore {
   /** The current in-memory access token, or null if logged out. */
   getAccessToken(): string | null {
     return this.accessToken;
+  }
+
+  /** Granted permissions ("ResourceType:actionInt") decoded from the current access token. */
+  getPermissions(): string[] {
+    return this.accessToken ? permissionsFromToken(this.accessToken) : [];
   }
 
   /** Roles from the last login (in memory only). */

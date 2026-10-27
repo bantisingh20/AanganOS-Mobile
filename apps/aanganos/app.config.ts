@@ -6,7 +6,7 @@ import type { ExpoConfig } from 'expo/config';
  * app id is read from env at build time (EXPO_PUBLIC_ONESIGNAL_APP_ID), never hardcoded here.
  */
 const config: ExpoConfig = {
-  name: 'UrbanNest',
+  name: 'AanganOS',
   slug: 'urbannest-resident',
   scheme: 'urbannest',
   version: '0.1.0',
@@ -14,12 +14,16 @@ const config: ExpoConfig = {
   userInterfaceStyle: 'automatic',
   icon: './assets/icon.png',
   ios: {
-    bundleIdentifier: 'com.urbannest.resident',
+    bundleIdentifier: 'com.aanganos.app',
     supportsTablet: true,
   },
   android: {
-    package: 'com.urbannest.resident',
+    package: 'com.aanganos.app',
     newArchEnabled: false,
+    adaptiveIcon: {
+      foregroundImage: './assets/icon.png',
+      backgroundColor: '#0b261d',
+    },
     permissions: [
       'android.permission.CAMERA',
       'android.permission.READ_MEDIA_IMAGES',

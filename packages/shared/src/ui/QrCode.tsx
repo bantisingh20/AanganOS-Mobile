@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Share, StyleSheet, View } from 'react-native';
 import qrcode from 'qrcode-generator';
+import { emitToast } from './toastBus';
 
 export interface QrCodeProps {
   /** The string to encode (e.g. the pass QR token). */
@@ -80,7 +81,6 @@ export async function shareQrImage(value: string, message?: string): Promise<boo
     const qr = qrcode(0, 'M');
     qr.addData(value);
     qr.make();
-    // createDataURL(cellSize, margin) → "data:image/gif;base64,...."
     const dataUrl = qr.createDataURL(8, 2);
     const base64 = dataUrl.replace(/^data:image\/\w+;base64,/, '');
 
@@ -92,13 +92,22 @@ export async function shareQrImage(value: string, message?: string): Promise<boo
     const fileUri = `${dir}visit-pass-qr.gif`;
     await FileSystem.writeAsStringAsync(fileUri, base64, { encoding: FileSystem.EncodingType.Base64 });
 
-    await Share.share({
-      url: fileUri, // iOS/Android file share
-      ...(message ? { message } : {}),
-    });
-    return true;
+    const Sharing = await import('expo-sharing');
+    if (await Sharing.isAvailableAsync()) {
+      await Sharing.shareAsync(fileUri, {
+        mimeType: 'image/gif',
+        dialogTitle: message ?? 'Share visit pass QR',
+        ...(message ? { UTI: 'public.image' } : {}),
+      });
+      return true;
+    }
+    throw new Error('Sharing not available');
   } catch {
-    // Fall back to sharing the text so the action is never a dead-end.
+    emitToast({
+      tone: 'error',
+      title: 'Could not attach the QR image',
+      message: 'Sharing the pass details as text instead.',
+    });
     try {
       if (message) {
         await Share.share({ message });

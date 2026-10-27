@@ -25,6 +25,8 @@ export interface PhotoPickerProps {
    * {@link upload} is unused and {@link onChange} is not called by the picker.
    */
   onPickLocal?: (file: LocalFile | null) => void;
+  /** 'horizontal' (default): thumb left, buttons right. 'vertical': big thumb on top, buttons below. */
+  layout?: 'horizontal' | 'vertical';
 }
 
 /**
@@ -37,7 +39,8 @@ export interface PhotoPickerProps {
  * <p>`expo-image-picker` is a native module provided by the host app, imported dynamically so the
  * shared package carries no hard dependency on it (same decoupling as the secure-store adapter).</p>
  */
-export function PhotoPicker({ label, required = false, files, upload, value, onChange, disabled = false, onPickLocal }: PhotoPickerProps) {
+export function PhotoPicker({ label, required = false, files, upload, value, onChange, disabled = false, onPickLocal, layout = 'horizontal' }: PhotoPickerProps) {
+  const vertical = layout === 'vertical';
   const [previewUri, setPreviewUri] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const deferred = typeof onPickLocal === 'function';
@@ -113,16 +116,16 @@ export function PhotoPicker({ label, required = false, files, upload, value, onC
         {required ? <Text style={styles.required}> *</Text> : null}
       </Text>
 
-      <View style={styles.row}>
+      <View style={vertical ? styles.colLayout : styles.row}>
         {thumbSource ? (
-          <Image source={thumbSource} style={styles.thumb} accessibilityLabel="Selected photo preview" />
+          <Image source={thumbSource} style={vertical ? styles.thumbLarge : styles.thumb} accessibilityLabel="Selected photo preview" />
         ) : (
-          <View style={[styles.thumb, styles.thumbEmpty]}>
-            {busy ? <ActivityIndicator color={theme.color.primary} /> : <Ionicons name="image-outline" size={24} color={theme.color.mutedText} />}
+          <View style={[vertical ? styles.thumbLarge : styles.thumb, styles.thumbEmpty]}>
+            {busy ? <ActivityIndicator color={theme.color.primary} /> : <Ionicons name="image-outline" size={vertical ? 40 : 24} color={theme.color.mutedText} />}
           </View>
         )}
 
-        <View style={styles.actions}>
+        <View style={vertical ? styles.actionsCenter : styles.actions}>
           <ActionButton icon="camera-outline" label="Camera" onPress={() => pickFrom('camera')} disabled={disabled || busy} />
           <ActionButton icon="images-outline" label="Gallery" onPress={() => pickFrom('library')} disabled={disabled || busy} />
           {hasPhoto ? <ActionButton icon="trash-outline" label="Remove" tone={theme.color.danger} onPress={remove} disabled={disabled || busy} /> : null}
@@ -165,9 +168,12 @@ const styles = StyleSheet.create({
   label: { fontSize: theme.fontSize.label, color: theme.color.text, fontWeight: '600' },
   required: { color: theme.color.danger, fontWeight: '800' },
   row: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
+  colLayout: { alignItems: 'stretch', gap: theme.spacing.md },
   thumb: { width: 72, height: 72, borderRadius: theme.radius.md, backgroundColor: theme.color.background },
+  thumbLarge: { width: '100%', height: 240, borderRadius: theme.radius.lg, backgroundColor: theme.color.background },
   thumbEmpty: { alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.color.border },
   actions: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm },
+  actionsCenter: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: theme.spacing.sm },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',

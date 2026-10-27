@@ -25,6 +25,8 @@ export interface LoginScreenProps {
   appTitle: string;
   /** Navigate to the forgot-password screen. */
   onForgotPassword: () => void;
+  /** Navigate to the self-registration screen. Omit to hide the "Register" link. */
+  onRegister?: () => void;
   /** Optional content rendered above the form (e.g. a one-time "password reset" success notice). */
   headerSlot?: React.ReactNode;
 }
@@ -43,7 +45,7 @@ const DEV_DEFAULT_PASSWORD = __DEV__ ? '123' : '';
 const LOGO_URI = 'https://cdn-icons-png.flaticon.com/512/619/619153.png';
 
 
-export function LoginScreen({ appTitle, onForgotPassword, headerSlot }: LoginScreenProps) {
+export function LoginScreen({ appTitle, onForgotPassword, onRegister, headerSlot }: LoginScreenProps) {
   const { login } = useAuth();
   // DEV ONLY: prefilled credentials for faster local testing. REMOVE before production.
   const [identifier, setIdentifier] = useState(DEV_DEFAULT_IDENTIFIER);
@@ -107,7 +109,7 @@ export function LoginScreen({ appTitle, onForgotPassword, headerSlot }: LoginScr
                   />
                 </View>
               </View>
-              <Text style={styles.brand} accessibilityRole="header">UrbanNest</Text>
+              <Text style={styles.brand} accessibilityRole="header">AanganOS</Text>
               <View style={styles.brandPill}>
                 <Text style={styles.brandSub}>{appTitle}</Text>
               </View>
@@ -166,6 +168,19 @@ export function LoginScreen({ appTitle, onForgotPassword, headerSlot }: LoginScr
                 accessibilityHint="Signs in with your email or phone and password"
                 testID="login-submit"
               />
+
+              {onRegister ? (
+                <View style={styles.registerRow}>
+                  <Text style={styles.registerText}>New here?</Text>
+                  <LinkButton
+                    title="Register"
+                    onPress={onRegister}
+                    disabled={submitting}
+                    accessibilityHint="Opens the registration screen"
+                    testID="login-register"
+                  />
+                </View>
+              ) : null}
             </View>
 
             <Text style={styles.footer}>Secure community management</Text>
@@ -252,5 +267,7 @@ const styles = StyleSheet.create({
   },
 
   forgotRow: { alignItems: 'flex-end', marginTop: -theme.spacing.xs, marginBottom: theme.spacing.xs },
+  registerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.spacing.xs, marginTop: theme.spacing.sm },
+  registerText: { color: theme.color.mutedText, fontSize: theme.fontSize.label },
   footer: { textAlign: 'center', color: 'rgba(255,255,255,0.7)', fontSize: theme.fontSize.label },
 });

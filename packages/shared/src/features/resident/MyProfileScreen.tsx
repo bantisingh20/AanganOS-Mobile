@@ -80,24 +80,48 @@ export function MyProfileScreen({ resources, onBack }: MyProfileScreenProps) {
       >
         {resident ? (
           <>
-            {/* Hero summary */}
+            {/* Identity hero card with a stat strip (Yalla-style). */}
             <View style={styles.hero}>
-              <View style={styles.avatar}>
-                <Ionicons name="person" size={30} color={theme.color.primaryText} />
+              <View style={styles.heroTop}>
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarInitial}>{(resident.name.trim()[0] ?? 'R').toUpperCase()}</Text>
+                </View>
+                <View style={styles.heroHead}>
+                  <Text style={styles.name} numberOfLines={1}>{resident.name}</Text>
+                  {resident.phone ? (
+                    <View style={styles.heroPhone}>
+                      <Ionicons name="call" size={13} color={theme.color.primaryText} />
+                      <Text style={styles.heroPhoneText} numberOfLines={1}>{resident.phone}</Text>
+                    </View>
+                  ) : null}
+                  <View style={styles.heroTags}>
+                    <View style={styles.heroTag}><Text style={styles.heroTagText}>{humanizeCode(resident.residentType).toUpperCase()}</Text></View>
+                    <View style={styles.heroTag}><Text style={styles.heroTagText}>{humanizeCode(resident.verificationStatus).toUpperCase()}</Text></View>
+                  </View>
+                </View>
               </View>
-              <Text style={styles.name} numberOfLines={1}>{resident.name}</Text>
-              <Text style={styles.sub}>{humanizeCode(resident.residentType)}</Text>
-              <View style={styles.heroMeta}>
-                {resident.phone ? <HeroMeta icon="call-outline" label={resident.phone} /> : null}
-                {resident.email ? <HeroMeta icon="mail-outline" label={resident.email} /> : null}
-                {soleUnit ? <HeroMeta icon="home-outline" label={`Unit ${soleUnit.unitNumber}`} /> : null}
+
+              <View style={styles.statStrip}>
+                <HeroStat icon="home" value={String(units.length)} label={units.length === 1 ? 'Unit' : 'Units'} />
+                <View style={styles.statDivider} />
+                <HeroStat icon="people" value={humanizeCode(resident.residentType)} label="Type" />
+                <View style={styles.statDivider} />
+                <HeroStat icon="shield-checkmark" value={humanizeCode(resident.verificationStatus)} label="Status" />
               </View>
             </View>
 
-            <MenuTile icon="create-outline" tint={theme.color.primary} title="Edit contact details" subtitle="Name, email and phone" onPress={() => setEditingContact(true)} />
-            <MenuTile icon="people-outline" tint={theme.color.info} title="Family members" subtitle="View and add household members" onPress={() => setView({ name: 'family' })} />
-            <MenuTile icon="car-outline" tint={theme.color.warning} title="Vehicles" subtitle="View and register your vehicles" onPress={() => setView({ name: 'vehicles' })} />
-            <MenuTile icon="call-outline" tint={theme.color.success} title="Emergency contacts" subtitle="People to reach in an emergency" onPress={() => setView({ name: 'contacts' })} />
+            <SectionGroup title="Account" hint="Manage your details">
+              <MenuTile icon="create-outline" tint={theme.color.primary} title="Edit contact details" subtitle="Name, email and phone" onPress={() => setEditingContact(true)} first />
+              <MenuTile icon="people-outline" tint={theme.color.info} title="Family members" subtitle="View and add household members" onPress={() => setView({ name: 'family' })} />
+              <MenuTile icon="car-outline" tint={theme.color.warning} title="Vehicles" subtitle="View and register your vehicles" onPress={() => setView({ name: 'vehicles' })} />
+              <MenuTile icon="call-outline" tint={theme.color.success} title="Emergency contacts" subtitle="People to reach in an emergency" onPress={() => setView({ name: 'contacts' })} last />
+            </SectionGroup>
+
+            {soleUnit ? (
+              <SectionGroup title="Residence" hint="Where you live">
+                <MenuTile icon="home-outline" tint={theme.color.info} title={`Unit ${soleUnit.unitNumber}`} subtitle="Your home in the community" onPress={() => setView({ name: 'family' })} first last />
+              </SectionGroup>
+            ) : null}
 
             <EditContactSheet
               resources={resources}
@@ -113,20 +137,36 @@ export function MyProfileScreen({ resources, onBack }: MyProfileScreenProps) {
   );
 }
 
-/** A small icon+label chip on the profile hero. */
-function HeroMeta({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; label: string }) {
+/** One stat in the hero stat strip (units / type / status). */
+function HeroStat({ icon, value, label }: { icon: keyof typeof Ionicons.glyphMap; value: string; label: string }) {
   return (
-    <View style={styles.heroChip}>
-      <Ionicons name={icon} size={13} color={theme.color.primaryText} />
-      <Text style={styles.heroChipText} numberOfLines={1}>{label}</Text>
+    <View style={styles.heroStat}>
+      <View style={styles.heroStatTop}>
+        <Ionicons name={icon} size={14} color={theme.color.primaryText} />
+        <Text style={styles.heroStatValue} numberOfLines={1}>{value}</Text>
+      </View>
+      <Text style={styles.heroStatLabel} numberOfLines={1}>{label}</Text>
     </View>
   );
 }
 
-/** A navigation tile on the profile hub. */
-function MenuTile({ icon, title, subtitle, tint, onPress }: { icon: keyof typeof Ionicons.glyphMap; title: string; subtitle: string; tint: string; onPress: () => void }) {
+/** A titled section: bold left title + muted right hint, wrapping a card of rows. */
+function SectionGroup({ title, hint, children }: { title: string; hint: string; children: React.ReactNode }) {
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={title} style={({ pressed }) => [styles.tile, pressed ? styles.pressed : null]}>
+    <View style={styles.section}>
+      <View style={styles.sectionHead}>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        <Text style={styles.sectionHint} numberOfLines={1}>{hint}</Text>
+      </View>
+      <View style={styles.sectionCard}>{children}</View>
+    </View>
+  );
+}
+
+/** A navigation row inside a SectionGroup card (tinted square icon + title/subtitle + chevron). */
+function MenuTile({ icon, title, subtitle, tint, onPress, first = false, last = false }: { icon: keyof typeof Ionicons.glyphMap; title: string; subtitle: string; tint: string; onPress: () => void; first?: boolean; last?: boolean }) {
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={title} style={({ pressed }) => [styles.tile, !first ? styles.tileDivider : null, pressed ? styles.pressed : null]}>
       <View style={[styles.tileIcon, { backgroundColor: `${tint}1f` }]}>
         <Ionicons name={icon} size={20} color={tint} />
       </View>
@@ -530,32 +570,48 @@ function ContactsView({ resources, residentId, onBack }: { resources: ResourceCl
 
 const styles = StyleSheet.create({
   hero: {
-    backgroundColor: theme.color.hero,
+    backgroundColor: theme.color.primary,
     borderRadius: theme.radius.xl,
-    padding: theme.spacing.xl,
-    alignItems: 'center',
-    gap: theme.spacing.xs,
+    padding: theme.spacing.lg,
+    gap: theme.spacing.md,
     ...theme.shadow.hero,
   },
+  heroTop: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
   avatar: {
-    width: 72, height: 72, borderRadius: theme.radius.pill,
+    width: 64, height: 64, borderRadius: theme.radius.lg,
     backgroundColor: theme.color.onHeroSoft, alignItems: 'center', justifyContent: 'center',
-    marginBottom: theme.spacing.sm,
   },
+  avatarInitial: { fontSize: theme.fontSize.heading, fontWeight: '800', color: theme.color.primaryText },
+  heroHead: { flex: 1, gap: 4 },
   name: { fontSize: theme.fontSize.title, fontWeight: '800', color: theme.color.primaryText },
-  sub: { fontSize: theme.fontSize.label, color: theme.color.primaryText, opacity: 0.85, fontWeight: '700' },
-  heroMeta: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: theme.spacing.sm, marginTop: theme.spacing.sm },
-  heroChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: theme.color.onHeroSoft, borderRadius: theme.radius.pill,
-    paddingVertical: 5, paddingHorizontal: theme.spacing.md, maxWidth: '100%',
+  heroPhone: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  heroPhoneText: { color: theme.color.primaryText, opacity: 0.9, fontSize: theme.fontSize.label, fontWeight: '600' },
+  heroTags: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm, marginTop: 2 },
+  heroTag: { backgroundColor: theme.color.onHeroSoft, borderRadius: theme.radius.sm, paddingVertical: 3, paddingHorizontal: theme.spacing.sm },
+  heroTagText: { color: theme.color.primaryText, fontSize: 10, fontWeight: '800', letterSpacing: 0.4 },
+  statStrip: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingTop: theme.spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255,255,255,0.18)',
   },
-  heroChipText: { color: theme.color.primaryText, fontSize: theme.fontSize.caption, fontWeight: '600' },
+  heroStat: { flex: 1, gap: 2 },
+  heroStatTop: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  heroStatValue: { color: theme.color.primaryText, fontSize: theme.fontSize.body, fontWeight: '800' },
+  heroStatLabel: { color: theme.color.primaryText, opacity: 0.75, fontSize: theme.fontSize.caption },
+  statDivider: { width: StyleSheet.hairlineWidth, alignSelf: 'stretch', backgroundColor: 'rgba(255,255,255,0.18)', marginHorizontal: theme.spacing.sm },
+
+  section: { gap: theme.spacing.sm, marginTop: theme.spacing.lg },
+  sectionHead: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', paddingHorizontal: theme.spacing.xs },
+  sectionTitle: { fontSize: theme.fontSize.body, fontWeight: '800', color: theme.color.text },
+  sectionHint: { fontSize: theme.fontSize.caption, color: theme.color.mutedText, flexShrink: 1, marginLeft: theme.spacing.sm },
+  sectionCard: { backgroundColor: theme.color.surface, borderRadius: theme.radius.lg, overflow: 'hidden', ...theme.shadow.soft },
+
   tile: {
     flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md,
-    backgroundColor: theme.color.surface, borderRadius: theme.radius.lg,
-    padding: theme.spacing.md, ...theme.shadow.soft,
+    backgroundColor: theme.color.surface,
+    paddingVertical: theme.spacing.md, paddingHorizontal: theme.spacing.md,
   },
+  tileDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.color.border },
   pressed: { opacity: 0.85 },
   tileIcon: { width: 40, height: 40, borderRadius: theme.radius.md, alignItems: 'center', justifyContent: 'center' },
   tileText: { flex: 1 },

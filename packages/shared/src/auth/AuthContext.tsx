@@ -9,6 +9,7 @@ import React, {
 } from 'react';
 import type { AuthService } from './authService';
 import { isPlatformSuperAdminToken, type SecureTokenStore } from './tokenStore';
+import { PermissionAction, hasPermissionIn } from './permissions';
 import type { LoginRequest, LoginResponse } from '../models/auth';
 import { isRefreshTokenDead } from './refreshFailure';
 import { ApiRequestError } from '../api/errors';
@@ -25,12 +26,18 @@ export interface AuthContextValue {
   status: AuthStatus;
   /** Roles from the active session (empty when unauthenticated). */
   roles: readonly string[];
+  /** Granted permissions ("ResourceType:actionInt") from the active session. */
+  permissions: readonly string[];
+  /** True when the signed-in user holds a given (action, resource) grant. */
+  hasPermission(action: PermissionAction, resource: string): boolean;
   /** The signed-in user's id (access-token `sub`), or null when unauthenticated. */
   userId: string | null;
   /** The signed-in identifier (email/phone) for display, or null when unauthenticated. */
   displayName: string | null;
   /** Log in, persist the session, run the post-login side effect (e.g. device registration). */
   login(request: LoginRequest): Promise<LoginResponse>;
+  /** Adopt a session returned by another flow (e.g. self-register) without a password round-trip. */
+  adoptSession(result: LoginResponse, displayName?: string): Promise<void>;
   /** Log out: revoke server-side (best effort), clear local tokens, return to the auth flow. */
   logout(): Promise<void>;
 }
@@ -67,6 +74,7 @@ export function AuthProvider({
 }: AuthProviderProps) {
   const [status, setStatus] = useState<AuthStatus>('restoring');
   const [roles, setRoles] = useState<readonly string[]>(tokenStore.getRoles());
+  const [permissions, setPermissions] = useState<readonly string[]>(tokenStore.getPermissions());
   const [userId, setUserId] = useState<string | null>(tokenStore.getUserId());
   const [displayName, setDisplayName] = useState<string | null>(tokenStore.getDisplayName());
   // Keep the latest side effect without making it a dependency of the restore effect.
@@ -80,6 +88,7 @@ export function AuthProvider({
       if (tokenStore.isAuthenticated()) {
         if (active) {
           setRoles(tokenStore.getRoles());
+          setPermissions(tokenStore.getPermissions());
           setUserId(tokenStore.getUserId());
           setDisplayName(tokenStore.getDisplayName());
           setStatus('authenticated');
@@ -103,6 +112,7 @@ export function AuthProvider({
           return;
         }
         setRoles(tokenStore.getRoles());
+        setPermissions(tokenStore.getPermissions());
         setUserId(tokenStore.getUserId());
         setDisplayName(tokenStore.getDisplayName());
         setStatus('authenticated');
@@ -166,6 +176,7 @@ export function AuthProvider({
   useEffect(() => {
     const unsubscribe = tokenStore.onCleared(() => {
       setRoles([]);
+      setPermissions([]);
       setUserId(null);
       setDisplayName(null);
       setStatus('unauthenticated');
@@ -173,12 +184,8 @@ export function AuthProvider({
     return unsubscribe;
   }, [tokenStore]);
 
-  const login = useCallback(
-    async (request: LoginRequest): Promise<LoginResponse> => {
-      const result = await auth.login(request);
-      // Platform power users / super-admins belong in the WEB admin portal, not this
-      // resident/guard app. Reject such a login: revoke the just-created session server-side and
-      // clear local tokens, then surface a clear FORBIDDEN error. The session is never left active.
+  const applySession = useCallback(
+    async (result: LoginResponse, displayNameToStore?: string): Promise<void> => {
       if (isPlatformSuperAdminToken(result.accessToken)) {
         await auth.logout().catch(() => undefined);
         throw new ApiRequestError({
@@ -189,18 +196,36 @@ export function AuthProvider({
           httpStatus: 403,
         });
       }
-      tokenStore.setDisplayName(request.identifier);
+      if (displayNameToStore) {
+        tokenStore.setDisplayName(displayNameToStore);
+      }
       setRoles(tokenStore.getRoles());
+      setPermissions(tokenStore.getPermissions());
       setUserId(tokenStore.getUserId());
       setDisplayName(tokenStore.getDisplayName());
       setStatus('authenticated');
-      // Fire-and-forget: a device-registration failure must not block entry (Req 65.4 spirit).
       void Promise.resolve()
         .then(() => onAuthenticatedRef.current?.(result))
         .catch(() => undefined);
-      return result;
     },
     [auth, tokenStore],
+  );
+
+  const login = useCallback(
+    async (request: LoginRequest): Promise<LoginResponse> => {
+      const result = await auth.login(request);
+      await applySession(result, request.identifier);
+      return result;
+    },
+    [auth, applySession],
+  );
+
+  const adoptSession = useCallback(
+    async (result: LoginResponse, name?: string): Promise<void> => {
+      await tokenStore.setFromLogin(result);
+      await applySession(result, name);
+    },
+    [tokenStore, applySession],
   );
 
   const logout = useCallback(async (): Promise<void> => {
@@ -209,15 +234,21 @@ export function AuthProvider({
     } finally {
       // AuthService.logout already clears the store even if the network call fails.
       setRoles([]);
+      setPermissions([]);
       setUserId(null);
       setDisplayName(null);
       setStatus('unauthenticated');
     }
   }, [auth]);
 
+  const hasPermission = useCallback(
+    (action: PermissionAction, resource: string) => hasPermissionIn(permissions, action, resource),
+    [permissions],
+  );
+
   const value = useMemo<AuthContextValue>(
-    () => ({ status, roles, userId, displayName, login, logout }),
-    [status, roles, userId, displayName, login, logout],
+    () => ({ status, roles, permissions, hasPermission, userId, displayName, login, adoptSession, logout }),
+    [status, roles, permissions, hasPermission, userId, displayName, login, adoptSession, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

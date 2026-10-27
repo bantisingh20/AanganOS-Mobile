@@ -2,7 +2,7 @@
   "name": "communityos-mobile",
   "version": "0.1.0",
   "private": true,
-  "description": "CommunityOS React Native workspace: Resident/Owner and Security/Guard apps with a shared internal core.",
+  "description": "CommunityOS React Native workspace: one role-aware Resident app (serves resident/guard/admin by role) plus a shared internal core.",
   "workspaces": [
     "packages/*",
     "apps/*"
@@ -13,7 +13,16 @@
   "scripts": {
     "typecheck": "npm run typecheck -w @communityos/shared",
     "typecheck:all": "npm run typecheck --workspaces --if-present",
-    "resident": "npm run start -w @communityos/resident",
-    "guard": "npm run start -w @communityos/guard"
+    "aanganos": "npm run start -w @communityos/aanganos",
+    "android": "expo run:android",
+    "ios": "expo run:ios"
+  },
+  "devDependencies": {
+    "@react-native-community/cli": "^20.2.0"
+  },
+  "dependencies": {
+    "expo": "~54.0.1",
+    "react": "19.1.0",
+    "react-native": "0.81.4"
   }
 }

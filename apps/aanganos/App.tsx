@@ -35,7 +35,7 @@ export default function App() {
             onAuthenticated={core.onAuthenticated}
           >
             <StatusBar style="light" />
-            <AuthGate appTitle="Resident" auth={core.auth}>
+            <AuthGate appTitle="Resident" auth={core.auth} resources={core.resources}>
               <ResidentHome core={core} />
             </AuthGate>
           </AuthProvider>

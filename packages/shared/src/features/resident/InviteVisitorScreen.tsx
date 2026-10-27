@@ -59,6 +59,7 @@ export function InviteVisitorScreen({ resources, onBack }: InviteVisitorScreenPr
   const [unitId, setUnitId] = useState<string | null>(null);
   const [visitorName, setVisitorName] = useState('');
   const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [vehicle, setVehicle] = useState('');
   const [vehicleType, setVehicleType] = useState<string | null>(null);
   const [persons, setPersons] = useState('1');
@@ -89,6 +90,7 @@ export function InviteVisitorScreen({ resources, onBack }: InviteVisitorScreenPr
         numberOfPersons: personsNum,
         ...(visitDate ? { visitDateUtc: visitDate } : {}),
         ...(phone.trim() ? { phone: phone.trim() } : {}),
+        ...(email.trim() ? { email: email.trim() } : {}),
         ...(vehicle.trim() ? { vehicleNumber: vehicle.trim() } : {}),
         ...(vehicleType ? { vehicleType } : {}),
         ...(whomToMeet.trim() ? { whomToMeet: whomToMeet.trim() } : {}),
@@ -146,6 +148,7 @@ export function InviteVisitorScreen({ resources, onBack }: InviteVisitorScreenPr
             setCreated(null);
             setVisitorName('');
             setPhone('');
+            setEmail('');
             setVehicle('');
             setVehicleType(null);
             setPersons('1');
@@ -177,6 +180,7 @@ export function InviteVisitorScreen({ resources, onBack }: InviteVisitorScreenPr
           ) : null}
           <AppTextField label="Visitor name" required value={visitorName} onChangeText={setVisitorName} placeholder="Who are you inviting?" autoCapitalize="words" editable={!create.running} />
           <AppTextField label="Contact number" value={phone} onChangeText={setPhone} placeholder="Visitor's phone" keyboardType="phone-pad" editable={!create.running} />
+          <AppTextField label="Email" value={email} onChangeText={setEmail} placeholder="Visitor's email (for the pass)" keyboardType="email-address" autoCapitalize="none" editable={!create.running} />
           <AppTextField label="Whom to meet / flat" value={whomToMeet} onChangeText={setWhomToMeet} placeholder="Person or flat they're visiting" autoCapitalize="words" editable={!create.running} />
           <AppTextField label="Number of persons" value={persons} onChangeText={setPersons} placeholder="1" keyboardType="number-pad" editable={!create.running} />
         </FormSection>

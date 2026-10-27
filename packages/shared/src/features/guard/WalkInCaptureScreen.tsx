@@ -10,9 +10,11 @@ import { MasterDataDropdown } from '../../ui/MasterDataDropdown';
 import { useAsyncAction } from '../../ui/hooks';
 import { emitToast } from '../../ui/toastBus';
 import { theme } from '../../ui/theme';
+import { QrCode, shareQrImage } from '../../ui/QrCode';
+import { ListRow } from '../../ui/ListRow';
 import { GateMasterDataKeys } from '../../models/gate';
 import type { Unit } from '../../models/community';
-import type { Visitor } from '../../models/gate';
+import type { RegisterWalkInResult } from '../../models/gate';
 import type { ResourceClients } from '../../resources';
 import { gateStatusTone, humanizeCode } from '../shared/status';
 import { UnitDropdown } from '../../ui/UnitDropdown';
@@ -49,7 +51,7 @@ export function WalkInCaptureScreen({ resources, onBack }: WalkInCaptureScreenPr
   const [duration, setDuration] = useState('');
   const [vehicle, setVehicle] = useState('');
   const [photoFileId, setPhotoFileId] = useState<string | null>(null);
-  const [registered, setRegistered] = useState<Visitor | null>(null);
+  const [registered, setRegistered] = useState<RegisterWalkInResult | null>(null);
 
   const register = useAsyncAction(() => {
     const durationMinutes = duration.trim() ? Number(duration.trim()) : undefined;
@@ -104,23 +106,51 @@ export function WalkInCaptureScreen({ resources, onBack }: WalkInCaptureScreenPr
   };
 
   if (registered) {
+    const v = registered.visitor;
+    const autoApproved = registered.autoApproved;
+    const shareWalkIn = async () => {
+      if (!v.qrToken) return;
+      const caption =
+        `Visit pass for ${v.name}\n` +
+        (registered.otp ? `One-time code: ${registered.otp}\n` : '') +
+        `(Show the attached QR at the gate.)`;
+      await shareQrImage(v.qrToken, caption);
+    };
     return (
-      <FormScreen title="Walk-in registered" subtitle="Sent to the resident for approval" {...(onBack ? { onBack } : {})}>
+      <FormScreen
+        title={autoApproved ? 'Visitor checked in' : 'Walk-in registered'}
+        subtitle={autoApproved ? 'Approved automatically' : 'Sent to the resident for approval'}
+        {...(onBack ? { onBack } : {})}
+      >
         <FormSection title="Status" icon="checkmark-circle" tint={theme.color.success}>
           <Text style={styles.note}>
-            Registered and sent to the resident for approval. Hold the visitor at the gate until it&apos;s approved.
+            {autoApproved
+              ? 'Approved and checked in. Share the QR and code with the visitor; scan it again at the gate to check them out.'
+              : 'Registered and sent to the resident for approval. Hold the visitor at the gate until it\u2019s approved.'}
           </Text>
           <EntityCard
             icon="person"
-            title={registered.name}
+            title={v.name}
             meta={[
-              { icon: 'pricetag', label: humanizeCode(registered.category) },
-              ...(registered.whomToMeet ? [{ icon: 'people' as const, label: `To meet: ${registered.whomToMeet}` }] : []),
-              ...(registered.vehicleNumber ? [{ icon: 'car' as const, label: registered.vehicleNumber }] : []),
+              { icon: 'pricetag', label: humanizeCode(v.category) },
+              ...(v.whomToMeet ? [{ icon: 'people' as const, label: `To meet: ${v.whomToMeet}` }] : []),
+              ...(v.vehicleNumber ? [{ icon: 'car' as const, label: v.vehicleNumber }] : []),
             ]}
-            badge={{ label: humanizeCode(registered.status), tone: gateStatusTone(registered.status) }}
+            badge={{ label: humanizeCode(v.status), tone: gateStatusTone(v.status) }}
           />
         </FormSection>
+
+        {autoApproved && v.qrToken ? (
+          <FormSection title="Visitor pass" subtitle="Share with the visitor" icon="qr-code" tint={theme.color.success}>
+            <View style={styles.qrWrap}>
+              <QrCode value={v.qrToken} size={200} />
+            </View>
+            {registered.otp ? <ListRow title="One-time code (OTP)" subtitle={registered.otp} /> : null}
+            <ListRow title="QR token" subtitle={v.qrToken} />
+            <AppButton title="Share with visitor" variant="secondary" onPress={shareWalkIn} accessibilityHint="Open the share sheet to send the pass" />
+          </FormSection>
+        ) : null}
+
         <View style={styles.actions}>
           <AppButton title="Register another" onPress={reset} accessibilityHint="Capture another walk-in" />
         </View>
@@ -247,5 +277,6 @@ export function WalkInCaptureScreen({ resources, onBack }: WalkInCaptureScreenPr
 
 const styles = StyleSheet.create({
   note: { fontSize: theme.fontSize.caption, color: theme.color.mutedText, lineHeight: 18 },
+  qrWrap: { alignItems: 'center', paddingVertical: 8 },
   actions: { marginTop: theme.spacing.sm },
 });

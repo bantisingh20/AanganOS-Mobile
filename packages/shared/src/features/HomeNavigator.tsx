@@ -3,23 +3,20 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { TopBar } from '../ui/TopBar';
 import { BottomTabBar, type TabKey } from '../ui/BottomTabBar';
-import { StatChip } from '../ui/StatChip';
-import { SectionHeading } from '../ui/SectionHeading';
-import { EntityCard, type MetaChip } from '../ui/EntityCard';
 import { theme } from '../ui/theme';
-import { useSafeInsets } from '../ui/safeInsets';
 import { useAsync } from '../ui/hooks';
 import type { PagedData } from '../models/envelope';
 import type { Visitor } from '../models/gate';
 import { VisitorStatus } from '../models/gate';
 import type { Parcel } from '../models/parcel';
 import { ParcelStatus } from '../models/parcel';
-import { gateStatusTone, parcelStatusTone, humanizeCode } from './shared/status';
 import { useNavStack } from '../ui/navStack';
 import { useAuth } from '../auth/AuthContext';
+import { PermissionAction } from '../auth/permissions';
 import { LogoutButton } from '../screens/LogoutButton';
 import { hasAdminRole, hasSecurityRole, hasResidentRole } from './shared/roles';
 import { NotificationsScreen } from './shared/NotificationsScreen';
+import { VehicleLookupScreen } from './shared/VehicleLookupScreen';
 import type { ResourceClients, GateOfflineQueue } from '../resources';
 import type { Community, Unit } from '../models/community';
 import { CommunityListScreen } from './admin/CommunityListScreen';
@@ -82,7 +79,8 @@ export interface HomeNavigatorProps {
  * through the whole shell.
  */
 export function HomeNavigator({ resources, isAdmin = false, appTitle, offlineQueue }: HomeNavigatorProps) {
-  const { displayName, roles } = useAuth();
+  const { displayName, roles, hasPermission } = useAuth();
+  const canVehicleLookup = hasPermission(PermissionAction.View, 'Vehicle');
   // Feature visibility is driven by the signed-in ROLES (merged app): a login sees resident, guard
   // and/or admin features based on who they are. `isAdmin` is passed in (computed the same way) and
   // kept authoritative for the admin section. A user with none of admin/security is treated as a
@@ -114,7 +112,7 @@ export function HomeNavigator({ resources, isAdmin = false, appTitle, offlineQue
     [resources],
   );
   const societyName =
-    societyQuery.data?.items?.[0]?.name ?? `CommunityOS · ${appTitle}`;
+    societyQuery.data?.items?.[0]?.name ?? `AanganOS · ${appTitle}`;
 
   // Show the SIGNED-IN person's own real name in the header — resolved from THEIR OWN resident row
   // via `GET /residents/me` (the row whose UserId == the token's user id, the Resident→User link),
@@ -129,6 +127,12 @@ export function HomeNavigator({ resources, isAdmin = false, appTitle, offlineQue
   const myName = meQuery.data?.resident?.name;
   const userName = myName ?? displayName ?? 'Signed in';
 
+  const myVerificationStatus = meQuery.data?.resident?.verificationStatus;
+  const isPendingResident =
+    isResidentPrincipal &&
+    !!meQuery.data?.resident &&
+    myVerificationStatus !== 'verified';
+
   // Unread notification count for the top-bar bell. Reloaded on tab/route change (cheap count call)
   // so it refreshes after the user reads notifications or a new one arrives between navigations.
   const unreadQuery = useAsync(
@@ -136,6 +140,31 @@ export function HomeNavigator({ resources, isAdmin = false, appTitle, offlineQue
     [resources, route.name],
   );
   const unreadCount = unreadQuery.data ?? 0;
+
+  // A pending (unverified) resident is confined to Profile + My Household until an admin approves.
+  // A restricted shell renders its own tiles + a banner; any drilled-in feature route falls through
+  // to it, so a restricted feature is unreachable even with a stale route on the stack.
+  if (isPendingResident) {
+    const pendingBody =
+      route.name === 'myProfile' ? (
+        <MyProfileScreen resources={resources} onBack={back} />
+      ) : route.name === 'myHousehold' ? (
+        <MyHouseholdScreen resources={resources} onBack={back} />
+      ) : route.name === 'notifications' ? (
+        <NotificationsScreen resources={resources} onBack={back} />
+      ) : null;
+    if (pendingBody) return pendingBody;
+    return (
+      <PendingResidentHome
+        userName={userName}
+        societyName={societyName}
+        unreadCount={unreadCount}
+        onOpenProfile={() => go({ name: 'myProfile' })}
+        onOpenHousehold={() => go({ name: 'myHousehold' })}
+        onOpenNotifications={() => go({ name: 'notifications' })}
+      />
+    );
+  }
 
   // Only the top route renders. Feature detail screens render full-screen (their own back → pop).
   switch (route.name) {
@@ -205,6 +234,8 @@ export function HomeNavigator({ resources, isAdmin = false, appTitle, offlineQue
       return <CommunicationPreferencesScreen resources={resources} onBack={back} />;
     case 'lookup':
       return <GuardLookupScreen resources={resources} onBack={back} />;
+    case 'vehicleLookup':
+      return <VehicleLookupScreen resources={resources} onBack={back} />;
     case 'inviteVisitor':
       return <InviteVisitorScreen resources={resources} onBack={back} />;
 
@@ -270,19 +301,18 @@ export function HomeNavigator({ resources, isAdmin = false, appTitle, offlineQue
       const tab = route.tab;
       return (
         <View style={styles.shell}>
-          {tab !== 'home' ? (
-            <TopBar
-              title={tab === 'services' ? 'Services' : societyName}
-              subtitle={tab === 'services' ? 'Community & Unit Directory' : userName}
-              notificationCount={unreadCount}
-              onPressNotifications={() => go({ name: 'notifications' })}
-            />
-          ) : null}
+          <TopBar
+            title={tab === 'services' ? 'Services' : societyName}
+            subtitle={tab === 'services' ? 'Community & Unit Directory' : userName}
+            notificationCount={unreadCount}
+            onPressNotifications={() => go({ name: 'notifications' })}
+          />
           <View style={styles.body}>
             {tab === 'home' ? (
               <DashboardTab
                 resources={resources}
                 routeKey={route.name}
+                canVehicleLookup={canVehicleLookup}
                 isResident={isResident}
                 isSecurity={isSecurity}
                 userName={userName}
@@ -316,6 +346,68 @@ export function HomeNavigator({ resources, isAdmin = false, appTitle, offlineQue
   }
 }
 
+function PendingResidentHome({
+  userName,
+  societyName,
+  unreadCount,
+  onOpenProfile,
+  onOpenHousehold,
+  onOpenNotifications,
+}: {
+  userName: string;
+  societyName: string;
+  unreadCount: number;
+  onOpenProfile: () => void;
+  onOpenHousehold: () => void;
+  onOpenNotifications: () => void;
+}) {
+  const tiles: DashTile[] = [
+    { route: { name: 'myProfile' }, label: 'My Profile', icon: 'person-circle', tint: theme.color.primary },
+    { route: { name: 'myHousehold' }, label: 'My Household', icon: 'home', tint: '#16a34a' },
+  ];
+  const onTile = (name: Route['name']) => (name === 'myProfile' ? onOpenProfile() : onOpenHousehold());
+  return (
+    <View style={styles.shell}>
+      <TopBar
+        title={societyName}
+        subtitle={userName}
+        notificationCount={unreadCount}
+        onPressNotifications={onOpenNotifications}
+      />
+      <ScrollView contentContainerStyle={styles.dashScroll} showsVerticalScrollIndicator={false}>
+        <View style={styles.pendingBanner}>
+          <Ionicons name="time-outline" size={22} color={theme.color.warning} />
+          <View style={styles.pendingBannerText}>
+            <Text style={styles.pendingBannerTitle}>Registration pending approval</Text>
+            <Text style={styles.pendingBannerSub}>
+              Your account is awaiting approval. You can view your profile and household in the meantime.
+            </Text>
+          </View>
+        </View>
+        <View style={styles.dashGrid}>
+          {tiles.map((t) => (
+            <Pressable
+              key={t.label}
+              onPress={() => onTile(t.route.name)}
+              accessibilityRole="button"
+              accessibilityLabel={t.label}
+              style={({ pressed }) => [styles.dashTile, pressed ? styles.dashTilePressed : null]}
+            >
+              <View style={[styles.dashTileIcon, { backgroundColor: `${t.tint}1a` }]}>
+                <Ionicons name={t.icon} size={26} color={t.tint} />
+              </View>
+              <Text style={styles.dashTileLabel} numberOfLines={2}>{t.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+        <View style={styles.pendingLogout}>
+          <LogoutButton title="Log out" variant="secondary" />
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
 /** Where the unit detail returns to — the list the user opened it from. */
 type UnitOrigin = { name: 'units'; community?: Community } | { name: 'allUnits' };
 
@@ -337,6 +429,7 @@ type Route =
   | { name: 'myProfile' }
   | { name: 'commPrefs' }
   | { name: 'lookup' }
+  | { name: 'vehicleLookup' }
   | { name: 'inviteVisitor' }
   | { name: 'myVisitors' }
   | { name: 'walkInApprovals' }
@@ -501,6 +594,7 @@ function todayLabel(): string {
 function DashboardTab({
   resources,
   routeKey,
+  canVehicleLookup,
   isResident,
   isSecurity,
   userName,
@@ -514,6 +608,7 @@ function DashboardTab({
 }: {
   resources: ResourceClients;
   routeKey: string;
+  canVehicleLookup: boolean;
   isResident: boolean;
   isSecurity: boolean;
   userName: string;
@@ -525,7 +620,6 @@ function DashboardTab({
   onOpenNotifications: () => void;
   onOpenProfile: () => void;
 }) {
-  const insets = useSafeInsets();
   const [segment, setSegment] = useState<'community' | 'personal'>('community');
 
   const pendingWalkIns = useAsync<PagedData<Visitor>>(
@@ -551,10 +645,45 @@ function DashboardTab({
   const approvedWalkIns = useAsync<PagedData<Visitor>>(
     (signal) =>
       isSecurity
-        ? resources.gate.listVisitors({ pageSize: 5 }, { status: VisitorStatus.Approved }, { signal })
+        ? resources.gate.listVisitors({ pageSize: 200 }, { status: VisitorStatus.Approved }, { signal })
         : Promise.resolve(emptyPage<Visitor>()),
     [resources, isSecurity, routeKey],
   );
+
+  const gateEvents = useAsync(
+    (signal) =>
+      isSecurity
+        ? resources.gate.listEntryExitEvents({ pageSize: 200 }, {}, { signal })
+        : Promise.resolve(null),
+    [resources, isSecurity, routeKey],
+  );
+
+  const approvedNeedingCheckIn = useMemo(() => {
+    if (!isSecurity) return 0;
+    const checkedInIds = new Set<string>();
+    for (const e of gateEvents.data?.items ?? []) {
+      if (e.visitorId) checkedInIds.add(e.visitorId);
+    }
+    return (approvedWalkIns.data?.items ?? []).filter((v) => !checkedInIds.has(v.id)).length;
+  }, [isSecurity, approvedWalkIns.data, gateEvents.data]);
+
+  const attentionRows = useMemo<AttentionRowData[]>(() => {
+    const rows: AttentionRowData[] = [];
+    if (isResident) {
+      const pending = pendingWalkIns.data?.totalCount ?? 0;
+      if (pending > 0) {
+        rows.push({ key: 'pending', label: 'Walk-ins to approve', count: pending, icon: 'people', tint: '#bf8700', onPress: () => onNavigate({ name: 'walkInApprovals' }) });
+      }
+      const parcels = awaitingParcels.data?.totalCount ?? 0;
+      if (parcels > 0) {
+        rows.push({ key: 'parcels', label: 'Parcels to collect', count: parcels, icon: 'cube', tint: '#cf5500', onPress: () => onNavigate({ name: 'myParcels' }) });
+      }
+    }
+    if (isSecurity && approvedNeedingCheckIn > 0) {
+      rows.push({ key: 'approved', label: 'Approved walk-ins', count: approvedNeedingCheckIn, icon: 'checkmark-done', tint: '#1a7f37', onPress: () => onNavigate({ name: 'walkInApprovals' }) });
+    }
+    return rows;
+  }, [isResident, isSecurity, pendingWalkIns.data, awaitingParcels.data, approvedNeedingCheckIn, onNavigate]);
 
   // Community tiles: role-aware (guard gate ops first, then resident features). Personal tiles:
   // the resident's own-account actions. Each tile is an icon + label in the image-1 grid style.
@@ -575,8 +704,11 @@ function DashboardTab({
       { route: { name: 'myParcels' }, label: 'Parcels', icon: 'cube', tint: '#d97706' },
       { route: { name: 'recurringVisitors' }, label: 'Daily Help', icon: 'repeat', tint: '#db2777' },
     ];
-    return [...(isSecurity ? guard : []), ...(isResident ? resident : [])];
-  }, [isResident, isSecurity]);
+    const extra: DashTile[] = canVehicleLookup
+      ? [{ route: { name: 'vehicleLookup' }, label: 'Vehicle Lookup', icon: 'car-sport', tint: '#0ea5e9' }]
+      : [];
+    return [...(isSecurity ? guard : []), ...(isResident ? resident : []), ...extra];
+  }, [isResident, isSecurity, canVehicleLookup]);
 
   const personalTiles: DashTile[] = useMemo(
     () => [
@@ -597,21 +729,15 @@ function DashboardTab({
   return (
     <ScrollView contentContainerStyle={styles.dashScroll} showsVerticalScrollIndicator={false}>
       {/* Emerald gradient hero header card */}
-      <View style={[styles.dashHeader, { paddingTop: Math.max(theme.spacing.lg, insets.top + theme.spacing.sm) }]}>
+      <View style={[styles.dashHeader, { paddingTop: theme.spacing.lg }]}>
         <View style={styles.dashHeaderBlobA} />
         <View style={styles.dashHeaderBlobB} />
 
-        <View style={styles.dashHeaderTop}>
-          <View style={styles.dashBrandRow}>
-            <View style={styles.dashBrandIcon}>
-              <Ionicons name="home" size={13} color="#fff" />
-            </View>
-            <Text style={styles.dashBrand}>URBANNEST</Text>
-          </View>
-          <View style={styles.dashHeaderIcons}>
-            {/* SOS is a guard gate operation (needs Create SosAlert) — only security can raise it.
-                Residents don't have that permission, so the button is security-only. */}
-            {isSecurity ? (
+        {/* SOS is a guard gate operation (needs Create SosAlert) — only security can raise it, so the
+            top row only appears for security. Brand + notifications now live in the shared TopBar. */}
+        {isSecurity ? (
+          <View style={styles.dashHeaderTop}>
+            <View style={styles.dashHeaderIcons}>
               <Pressable
                 onPress={() => onNavigate({ name: 'sos' })}
                 accessibilityRole="button"
@@ -621,23 +747,9 @@ function DashboardTab({
               >
                 <Text style={styles.dashSosText}>SOS</Text>
               </Pressable>
-            ) : null}
-            <Pressable
-              onPress={onOpenNotifications}
-              accessibilityRole="button"
-              accessibilityLabel={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ''}`}
-              hitSlop={8}
-              style={styles.dashIconBtn}
-            >
-              <Ionicons name="notifications" size={18} color="#fff" />
-              {unreadCount > 0 ? (
-                <View style={styles.dashBadge}>
-                  <Text style={styles.dashBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
-                </View>
-              ) : null}
-            </Pressable>
+            </View>
           </View>
-        </View>
+        ) : null}
 
         <Pressable style={styles.dashProfileRow} onPress={onOpenProfile} accessibilityRole="button" accessibilityLabel="Open profile">
           <View style={styles.dashAvatar}>
@@ -664,6 +776,25 @@ function DashboardTab({
         ) : null}
       </View>
 
+      {attentionRows.length > 0 ? (
+        <View style={styles.attentionBlock}>
+          <Text style={styles.attentionHeading}>Needs your attention</Text>
+          <View style={styles.attentionCard}>
+            {attentionRows.map((r, i) => (
+              <AttentionRow
+                key={r.key}
+                label={r.label}
+                count={r.count}
+                icon={r.icon}
+                tint={r.tint}
+                first={i === 0}
+                onPress={r.onPress}
+              />
+            ))}
+          </View>
+        </View>
+      ) : null}
+
       {/* Feature tile grid. */}
       <View style={styles.dashGrid}>
         {tiles.map((t) => (
@@ -682,88 +813,6 @@ function DashboardTab({
         ))}
       </View>
 
-      {isResident ? (
-        <AttentionSection
-          title="Walk-ins to approve"
-          count={pendingWalkIns.data?.totalCount ?? 0}
-          icon="people"
-          tint="#bf8700"
-          onViewAll={() => onNavigate({ name: 'walkInApprovals' })}
-        >
-          {(pendingWalkIns.data?.items ?? []).map((v) => (
-            <EntityCard
-              key={v.id}
-              title={v.name}
-              icon="person"
-              tint="#bf8700"
-              badge={{ label: humanizeCode(v.status), tone: gateStatusTone(v.status) }}
-              meta={visitorMeta(v)}
-              onPress={() => onNavigate({ name: 'walkInApprovals' })}
-            />
-          ))}
-        </AttentionSection>
-      ) : null}
-
-      {isResident ? (
-        <AttentionSection
-          title="Parcels to collect"
-          count={awaitingParcels.data?.totalCount ?? 0}
-          icon="cube"
-          tint="#cf5500"
-          onViewAll={() => onNavigate({ name: 'myParcels' })}
-        >
-          {(awaitingParcels.data?.items ?? []).map((p) => (
-            <EntityCard
-              key={p.id}
-              title={p.trackingNumber}
-              icon="cube"
-              tint="#cf5500"
-              badge={{ label: humanizeCode(p.status), tone: parcelStatusTone(p.status) }}
-              meta={parcelMeta(p)}
-              onPress={() => onNavigate({ name: 'myParcels' })}
-            />
-          ))}
-        </AttentionSection>
-      ) : null}
-
-      {isSecurity ? (
-        <AttentionSection
-          title="Approved walk-ins"
-          count={approvedWalkIns.data?.totalCount ?? 0}
-          icon="checkmark-done"
-          tint="#1a7f37"
-          onViewAll={() => onNavigate({ name: 'walkInApprovals' })}
-        >
-          {(approvedWalkIns.data?.items ?? []).map((v) => (
-            <EntityCard
-              key={v.id}
-              title={v.name}
-              icon="person"
-              tint="#1a7f37"
-              badge={{ label: humanizeCode(v.status), tone: gateStatusTone(v.status) }}
-              meta={visitorMeta(v)}
-              onPress={() => onNavigate({ name: 'walkInApprovals' })}
-            />
-          ))}
-        </AttentionSection>
-      ) : null}
-
-      {/* Explore all services */}
-      <Pressable
-        onPress={onOpenServices}
-        accessibilityRole="button"
-        accessibilityLabel="Explore all services"
-        style={({ pressed }) => [styles.exploreCard, pressed ? styles.explorePressed : null]}
-      >
-        <View style={styles.exploreBadge}>
-          <Ionicons name="apps" size={22} color={theme.color.primary} />
-        </View>
-        <View style={styles.exploreText}>
-          <Text style={styles.exploreTitle}>Explore all services</Text>
-          <Text style={styles.exploreSub}>Everything you can do, in one place</Text>
-        </View>
-        <Ionicons name="arrow-forward" size={20} color={theme.color.primary} />
-      </Pressable>
     </ScrollView>
   );
 }
@@ -794,60 +843,46 @@ function emptyPage<T>(): PagedData<T> {
   return { items: [], page: 1, pageSize: 0, totalCount: 0 };
 }
 
-function visitorMeta(v: Visitor): MetaChip[] {
-  const meta: MetaChip[] = [{ icon: 'pricetag-outline', label: humanizeCode(v.category) }];
-  if (v.whomToMeet) meta.push({ icon: 'home-outline', label: v.whomToMeet });
-  if (v.phone) meta.push({ icon: 'call-outline', label: v.phone });
-  return meta;
-}
-
-function parcelMeta(p: Parcel): MetaChip[] {
-  return [
-    { icon: 'business-outline', label: p.provider },
-    { icon: 'pricetag-outline', label: humanizeCode(p.category) },
-  ];
-}
-
-function AttentionSection({
-  title,
-  count,
-  icon,
-  tint,
-  onViewAll,
-  children,
-}: {
-  title: string;
+interface AttentionRowData {
+  key: string;
+  label: string;
   count: number;
   icon: keyof typeof Ionicons.glyphMap;
   tint: string;
-  onViewAll: () => void;
-  children: React.ReactNode;
+  onPress: () => void;
+}
+
+function AttentionRow({
+  label,
+  count,
+  icon,
+  tint,
+  first,
+  onPress,
+}: {
+  label: string;
+  count: number;
+  icon: keyof typeof Ionicons.glyphMap;
+  tint: string;
+  first: boolean;
+  onPress: () => void;
 }) {
-  if (count <= 0) return null;
   return (
-    <View style={styles.attentionSection}>
-      <SectionHeading
-        title={title}
-        trailing={
-          <View style={[styles.attentionCount, { backgroundColor: `${tint}1f` }]}>
-            <Ionicons name={icon} size={13} color={tint} />
-            <Text style={[styles.attentionCountText, { color: tint }]}>
-              {count} need{count === 1 ? 's' : ''} your attention
-            </Text>
-          </View>
-        }
-      />
-      <View style={styles.attentionList}>{children}</View>
-      <Pressable
-        onPress={onViewAll}
-        accessibilityRole="button"
-        accessibilityLabel={`View all · ${title}`}
-        style={({ pressed }) => [styles.attentionViewAll, pressed ? styles.attentionViewAllPressed : null]}
-      >
-        <Text style={[styles.attentionViewAllText, { color: tint }]}>View all</Text>
-        <Ionicons name="arrow-forward" size={16} color={tint} />
-      </Pressable>
-    </View>
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${label}, ${count} need${count === 1 ? 's' : ''} your attention`}
+      style={({ pressed }) => [styles.attentionRow, first ? null : styles.attentionRowDivider, pressed ? styles.attentionRowPressed : null]}
+    >
+      <View style={[styles.attentionRowIcon, { backgroundColor: `${tint}1f` }]}>
+        <Ionicons name={icon} size={20} color={tint} />
+      </View>
+      <Text style={styles.attentionRowLabel} numberOfLines={1}>{label}</Text>
+      <View style={[styles.attentionRowCount, { backgroundColor: tint }]}>
+        <Text style={styles.attentionRowCountText}>{count > 99 ? '99+' : count}</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={18} color={theme.color.mutedText} />
+    </Pressable>
   );
 }
 
@@ -875,10 +910,6 @@ function ServicesTab({
 
   return (
     <ScrollView contentContainerStyle={styles.tabContent} showsVerticalScrollIndicator={false}>
-      <View style={styles.servicesHeader}>
-        <Text style={styles.servicesTitle}>Services</Text>
-        <Text style={styles.servicesSub}>Everything you can do, in one place</Text>
-      </View>
       {groups.map((group) => (
         <View key={group.title} style={styles.serviceGroup}>
           <Text style={styles.groupLabel}>{group.title.toUpperCase()}</Text>
@@ -1008,78 +1039,89 @@ function ProfileTab({
 }) {
   const roleLabel = roles.length > 0 ? roles.join(', ') : appTitle;
   const ident = roleIdentity(isAdmin, isSecurity);
-  const quickActions: { icon: keyof typeof Ionicons.glyphMap; label: string; tint: string; onPress: () => void }[] = [
-    { icon: 'notifications', label: 'Alerts', tint: theme.color.warning, onPress: onOpenNotifications ?? (() => {}) },
-    ...(onManageProfile ? [{ icon: 'create' as const, label: 'Edit', tint: theme.color.primary, onPress: onManageProfile }] : []),
-    { icon: 'lock-closed', label: 'Security', tint: theme.color.danger, onPress: () => {} },
-    { icon: 'help-buoy', label: 'Help', tint: theme.color.info, onPress: () => {} },
-  ];
   return (
-    <ScrollView contentContainerStyle={styles.pScroll} showsVerticalScrollIndicator={false}>
-      {/* Full-bleed banner: coloured role wash + blobs, avatar sits half-overlapping the card below. */}
-      <View style={[styles.pBanner, { backgroundColor: ident.tint }]}>
-        <View style={styles.pBannerBlobA} />
-        <View style={styles.pBannerBlobB} />
-      </View>
-
-      {/* Floating identity card that overlaps the banner (distinct overlapping-card layout). */}
-      <View style={styles.pIdentityWrap}>
-        <View style={styles.pAvatarClay}>
-          <View style={styles.profileAvatar}>
-            <Text style={styles.profileInitials}>{initialsOf(userName)}</Text>
+    <ScrollView contentContainerStyle={styles.pgScroll} showsVerticalScrollIndicator={false}>
+      {/* Identity hero card with a stat strip. */}
+      <View style={styles.pgHero}>
+        <View style={styles.pgHeroBlobA} />
+        <View style={styles.pgHeroBlobB} />
+        <View style={styles.pgHeroTop}>
+          <View style={styles.pgHeroAvatar}>
+            <Text style={styles.pgHeroInitials}>{initialsOf(userName)}</Text>
           </View>
-          <View style={[styles.pAvatarBadge, { backgroundColor: ident.tint }]}>
-            <Ionicons name={ident.icon} size={14} color={theme.color.primaryText} />
+          <View style={styles.pgHeroHead}>
+            <Text style={styles.pgHeroName} numberOfLines={1}>{userName}</Text>
+            <View style={styles.pgHeroTags}>
+              <View style={styles.pgHeroTag}><Text style={styles.pgHeroTagText}>{ident.label.toUpperCase()}</Text></View>
+            </View>
           </View>
         </View>
-        <View style={styles.pIdentityCard}>
-          <View style={styles.pAvatarSpacer} />
-          <Text style={styles.pIdName} numberOfLines={1}>{userName}</Text>
-          <View style={[styles.pIdRolePill, { backgroundColor: `${ident.tint}1f` }]}>
-            <Ionicons name={ident.icon} size={13} color={ident.tint} />
-            <Text style={[styles.pIdRoleText, { color: ident.tint }]} numberOfLines={1}>{ident.label}</Text>
-          </View>
-          <View style={styles.pIdCommunity}>
-            <Ionicons name="business" size={13} color={theme.color.mutedText} />
-            <Text style={styles.pIdCommunityText} numberOfLines={1}>{societyName}</Text>
-          </View>
-
-          {/* Horizontal quick-action chips (new element — not in the old list design). */}
-          <View style={styles.pQuickRow}>
-            {quickActions.map((a) => (
-              <Pressable
-                key={a.label}
-                onPress={a.onPress}
-                accessibilityRole="button"
-                accessibilityLabel={a.label}
-                style={({ pressed }) => [styles.pQuick, pressed ? styles.pQuickPressed : null]}
-              >
-                <View style={[styles.pQuickIcon, { backgroundColor: `${a.tint}1f` }]}>
-                  <Ionicons name={a.icon} size={20} color={a.tint} />
-                </View>
-                <Text style={styles.pQuickLabel} numberOfLines={1}>{a.label}</Text>
-              </Pressable>
-            ))}
-          </View>
+        <View style={styles.pgStatStrip}>
+          <ProfileStat icon="business" value={societyName} label="Community" />
+          <View style={styles.pgStatDivider} />
+          <ProfileStat icon="ribbon" value={roleLabel} label="Role" />
         </View>
       </View>
 
-      {/* Account info only (read-only). The actionable items live in the quick-action chips above,
-          so we don't repeat Notifications/Security/Help/Manage as a second list here. */}
-      <View style={styles.pBody}>
-        <Text style={styles.pSection}>Account</Text>
-        <View style={styles.pCard}>
-          <ProfileRow icon="person-outline" label="Signed in as" value={userName} tint={theme.color.primary} />
-          <ProfileRow icon="ribbon-outline" label="Role" value={roleLabel} tint={ident.tint} />
-          <ProfileRow icon="business-outline" label="Community" value={societyName} tint={theme.color.info} last />
-        </View>
+      <ProfileSection title="Account Management" hint="Manage your profile and preferences">
+        {onManageProfile ? (
+          <ProfileNavRow icon="person-circle-outline" tint={theme.color.primary} title="My Profile" subtitle="Your details, family, vehicles" onPress={onManageProfile} first />
+        ) : null}
+        <ProfileNavRow icon="notifications-outline" tint={theme.color.warning} title="Notifications" subtitle="Manage alerts and preferences" onPress={onOpenNotifications ?? (() => {})} first={!onManageProfile} last />
+      </ProfileSection>
 
-        <View style={styles.pLogout}>
-          <LogoutButton title="Log out" variant="secondary" />
-        </View>
-        <Text style={styles.pVersion}>CommunityOS · {appTitle} · v0.1.0</Text>
+      <ProfileSection title="Support & Legal" hint="Get help or learn more">
+        <ProfileNavRow icon="help-buoy-outline" tint={theme.color.info} title="Help & Support" subtitle="Get help with your account" onPress={() => {}} first />
+        <ProfileNavRow icon="document-text-outline" tint={theme.color.mutedText} title="Terms & Privacy" subtitle="Legal information" onPress={() => {}} last />
+      </ProfileSection>
+
+      <View style={styles.pgLogout}>
+        <LogoutButton title="Log Out" variant="secondary" />
       </View>
+      <Text style={styles.pgPowered}>Powered by AanganOS · {appTitle} · v0.1.0</Text>
     </ScrollView>
+  );
+}
+
+/** One stat in the Profile hero strip. */
+function ProfileStat({ icon, value, label }: { icon: keyof typeof Ionicons.glyphMap; value: string; label: string }) {
+  return (
+    <View style={styles.pgStat}>
+      <View style={styles.pgStatTop}>
+        <Ionicons name={icon} size={14} color={theme.color.primaryText} />
+        <Text style={styles.pgStatValue} numberOfLines={1}>{value}</Text>
+      </View>
+      <Text style={styles.pgStatLabel} numberOfLines={1}>{label}</Text>
+    </View>
+  );
+}
+
+/** A titled section with a bold left title + muted right hint, wrapping a card of rows. */
+function ProfileSection({ title, hint, children }: { title: string; hint: string; children: React.ReactNode }) {
+  return (
+    <View style={styles.pgSection}>
+      <View style={styles.pgSectionHead}>
+        <Text style={styles.pgSectionTitle}>{title}</Text>
+        <Text style={styles.pgSectionHint} numberOfLines={1}>{hint}</Text>
+      </View>
+      <View style={styles.pgSectionCard}>{children}</View>
+    </View>
+  );
+}
+
+/** A tappable navigation row inside a ProfileSection card. */
+function ProfileNavRow({ icon, tint, title, subtitle, onPress, first = false, last = false }: { icon: keyof typeof Ionicons.glyphMap; tint: string; title: string; subtitle: string; onPress: () => void; first?: boolean; last?: boolean }) {
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={title} style={({ pressed }) => [styles.pgRow, !first ? styles.pgRowDivider : null, pressed ? styles.pgPressed : null]}>
+      <View style={[styles.pgRowIcon, { backgroundColor: `${tint}1f` }]}>
+        <Ionicons name={icon} size={20} color={tint} />
+      </View>
+      <View style={styles.pgRowText}>
+        <Text style={styles.pgRowTitle} numberOfLines={1}>{title}</Text>
+        <Text style={styles.pgRowSub} numberOfLines={1}>{subtitle}</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={18} color={theme.color.mutedText} />
+    </Pressable>
   );
 }
 
@@ -1124,6 +1166,20 @@ const styles = StyleSheet.create({
   actionList: { gap: theme.spacing.md },
   // --- Dashboard (society-app, reference image 1) ---
   dashScroll: { padding: theme.spacing.lg, gap: theme.spacing.lg, paddingBottom: theme.spacing.xxl },
+  pendingBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: theme.spacing.md,
+    backgroundColor: `${theme.color.warning}1a`,
+    borderRadius: theme.radius.lg,
+    borderWidth: 1,
+    borderColor: `${theme.color.warning}55`,
+    padding: theme.spacing.lg,
+  },
+  pendingBannerText: { flex: 1, gap: 2 },
+  pendingBannerTitle: { fontSize: theme.fontSize.body, fontWeight: '800', color: theme.color.text },
+  pendingBannerSub: { fontSize: theme.fontSize.caption, color: theme.color.mutedText, lineHeight: 18 },
+  pendingLogout: { marginTop: theme.spacing.md },
   dashHeader: {
     backgroundColor: theme.color.primary,
     borderRadius: theme.radius.xl,
@@ -1140,7 +1196,7 @@ const styles = StyleSheet.create({
     position: 'absolute', bottom: -60, left: -40, width: 150, height: 150, borderRadius: 75,
     backgroundColor: 'rgba(0,0,0,0.08)',
   },
-  dashHeaderTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  dashHeaderTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' },
   dashBrandRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   dashBrandIcon: {
     width: 22,
@@ -1212,20 +1268,21 @@ const styles = StyleSheet.create({
   dashTilePressed: { opacity: 0.85, transform: [{ scale: 0.98 }] },
   dashTileIcon: { width: 56, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   dashTileLabel: { fontSize: theme.fontSize.label, fontWeight: '700', color: theme.color.text, textAlign: 'center' },
-  attentionSection: { marginTop: theme.spacing.lg, gap: theme.spacing.md },
-  attentionCount: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    borderRadius: theme.radius.pill,
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: theme.spacing.xs,
+  attentionBlock: { marginBottom: theme.spacing.md, gap: theme.spacing.sm },
+  attentionHeading: { fontSize: theme.fontSize.label, fontWeight: '800', color: theme.color.text, textTransform: 'uppercase', letterSpacing: 0.4 },
+  attentionCard: {
+    backgroundColor: theme.color.surface,
+    borderRadius: theme.radius.lg,
+    overflow: 'hidden',
+    ...theme.shadow.soft,
   },
-  attentionCountText: { fontSize: theme.fontSize.caption, fontWeight: '700' },
-  attentionList: { gap: theme.spacing.md },
-  attentionViewAll: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: theme.spacing.sm },
-  attentionViewAllPressed: { opacity: 0.7 },
-  attentionViewAllText: { fontSize: theme.fontSize.label, fontWeight: '800' },
+  attentionRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.md },
+  attentionRowDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.color.border },
+  attentionRowPressed: { opacity: 0.7 },
+  attentionRowIcon: { width: 40, height: 40, borderRadius: theme.radius.md, alignItems: 'center', justifyContent: 'center' },
+  attentionRowLabel: { flex: 1, fontSize: theme.fontSize.body, fontWeight: '700', color: theme.color.text },
+  attentionRowCount: { minWidth: 24, height: 24, borderRadius: 12, paddingHorizontal: 7, alignItems: 'center', justifyContent: 'center' },
+  attentionRowCountText: { color: '#fff', fontSize: theme.fontSize.caption, fontWeight: '800' },
   // 2-column quick-action grid: each tile is ~half width, wraps to the next row.
   quickGrid: {
     flexDirection: 'row',
@@ -1253,31 +1310,7 @@ const styles = StyleSheet.create({
   },
   quickTileTitle: { fontSize: theme.fontSize.body, fontWeight: '800', color: theme.color.text },
   quickTileSub: { fontSize: theme.fontSize.caption, color: theme.color.mutedText, lineHeight: 16 },
-  exploreCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing.md,
-    backgroundColor: theme.color.accentSoft,
-    borderRadius: theme.radius.lg,
-    padding: theme.spacing.lg,
-    marginTop: theme.spacing.sm,
-  },
-  explorePressed: { opacity: 0.85 },
-  exploreBadge: {
-    width: 44,
-    height: 44,
-    borderRadius: theme.radius.md,
-    backgroundColor: theme.color.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  exploreText: { flex: 1 },
-  exploreTitle: { fontSize: theme.fontSize.body, fontWeight: '800', color: theme.color.text },
-  exploreSub: { fontSize: theme.fontSize.caption, color: theme.color.mutedText, marginTop: 2 },
   group: { gap: theme.spacing.sm, marginBottom: theme.spacing.sm },
-  servicesHeader: { marginBottom: theme.spacing.sm },
-  servicesTitle: { fontSize: theme.fontSize.heading, fontWeight: '800', color: theme.color.text },
-  servicesSub: { fontSize: theme.fontSize.label, color: theme.color.mutedText, marginTop: 2 },
   serviceGroup: { gap: theme.spacing.sm, marginBottom: theme.spacing.lg },
   // Small uppercase section label above each inset card (iOS-settings style).
   groupLabel: { fontSize: theme.fontSize.caption, fontWeight: '800', color: theme.color.mutedText, letterSpacing: 0.6, marginLeft: theme.spacing.sm },
@@ -1446,4 +1479,49 @@ const styles = StyleSheet.create({
   pRowValue: { fontSize: theme.fontSize.caption, color: theme.color.mutedText, marginTop: 2 },
   pLogout: { marginTop: theme.spacing.lg },
   pVersion: { textAlign: 'center', color: theme.color.mutedText, fontSize: theme.fontSize.caption, marginTop: theme.spacing.md },
+
+  // --- Profile tab (Yalla-style: brand header + identity hero + grouped sections) ---
+  pgScroll: { padding: theme.spacing.lg, gap: theme.spacing.md, paddingBottom: theme.spacing.xxl },
+  pgHeader: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
+  pgBrandLogo: { width: 40, height: 40, borderRadius: theme.radius.md, backgroundColor: theme.color.primary, alignItems: 'center', justifyContent: 'center' },
+  pgBrandText: { flex: 1 },
+  pgBrandRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
+  pgBrandName: { fontSize: theme.fontSize.body, fontWeight: '800', color: theme.color.text, flexShrink: 1 },
+  pgBrandTag: { backgroundColor: theme.color.accentSoft, borderRadius: theme.radius.sm, paddingHorizontal: theme.spacing.sm, paddingVertical: 2 },
+  pgBrandTagText: { fontSize: 10, fontWeight: '800', color: theme.color.primary, letterSpacing: 0.4 },
+  pgBrandSub: { fontSize: theme.fontSize.caption, color: theme.color.mutedText, marginTop: 1 },
+  pgBell: { width: 40, height: 40, borderRadius: theme.radius.md, backgroundColor: theme.color.surface, alignItems: 'center', justifyContent: 'center', ...theme.shadow.soft },
+  pgPressed: { opacity: 0.8 },
+
+  pgHero: { backgroundColor: theme.color.primary, borderRadius: theme.radius.xl, padding: theme.spacing.lg, gap: theme.spacing.md, overflow: 'hidden', ...theme.shadow.hero },
+  pgHeroBlobA: { position: 'absolute', top: -50, right: -30, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.12)' },
+  pgHeroBlobB: { position: 'absolute', bottom: -60, left: -40, width: 150, height: 150, borderRadius: 75, backgroundColor: 'rgba(0,0,0,0.08)' },
+  pgHeroTop: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
+  pgHeroAvatar: { width: 60, height: 60, borderRadius: theme.radius.lg, backgroundColor: theme.color.onHeroSoft, alignItems: 'center', justifyContent: 'center' },
+  pgHeroInitials: { fontSize: theme.fontSize.title, fontWeight: '800', color: theme.color.primaryText },
+  pgHeroHead: { flex: 1, gap: theme.spacing.xs },
+  pgHeroName: { fontSize: theme.fontSize.title, fontWeight: '800', color: theme.color.primaryText },
+  pgHeroTags: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm },
+  pgHeroTag: { backgroundColor: theme.color.onHeroSoft, borderRadius: theme.radius.sm, paddingVertical: 3, paddingHorizontal: theme.spacing.sm },
+  pgHeroTagText: { color: theme.color.primaryText, fontSize: 10, fontWeight: '800', letterSpacing: 0.4 },
+  pgStatStrip: { flexDirection: 'row', alignItems: 'center', paddingTop: theme.spacing.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255,255,255,0.18)' },
+  pgStat: { flex: 1, gap: 2 },
+  pgStatTop: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  pgStatValue: { color: theme.color.primaryText, fontSize: theme.fontSize.label, fontWeight: '800', flexShrink: 1 },
+  pgStatLabel: { color: theme.color.primaryText, opacity: 0.75, fontSize: theme.fontSize.caption },
+  pgStatDivider: { width: StyleSheet.hairlineWidth, alignSelf: 'stretch', backgroundColor: 'rgba(255,255,255,0.18)', marginHorizontal: theme.spacing.md },
+
+  pgSection: { gap: theme.spacing.sm },
+  pgSectionHead: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', paddingHorizontal: theme.spacing.xs },
+  pgSectionTitle: { fontSize: theme.fontSize.body, fontWeight: '800', color: theme.color.text },
+  pgSectionHint: { fontSize: theme.fontSize.caption, color: theme.color.mutedText, flexShrink: 1, marginLeft: theme.spacing.sm },
+  pgSectionCard: { backgroundColor: theme.color.surface, borderRadius: theme.radius.lg, overflow: 'hidden', ...theme.shadow.soft },
+  pgRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, paddingVertical: theme.spacing.md, paddingHorizontal: theme.spacing.md },
+  pgRowDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.color.border },
+  pgRowIcon: { width: 40, height: 40, borderRadius: theme.radius.md, alignItems: 'center', justifyContent: 'center' },
+  pgRowText: { flex: 1 },
+  pgRowTitle: { fontSize: theme.fontSize.body, fontWeight: '700', color: theme.color.text },
+  pgRowSub: { fontSize: theme.fontSize.caption, color: theme.color.mutedText, marginTop: 2 },
+  pgLogout: { marginTop: theme.spacing.sm },
+  pgPowered: { textAlign: 'center', color: theme.color.mutedText, fontSize: theme.fontSize.caption, marginTop: theme.spacing.sm },
 });

@@ -1,20 +1,25 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { BackHandler } from 'react-native';
 import { LoginScreen } from './LoginScreen';
 import { ForgotPasswordScreen } from './ForgotPasswordScreen';
 import { VerifyOtpScreen } from './VerifyOtpScreen';
 import { ResetPasswordScreen } from './ResetPasswordScreen';
+import { RegisterScreen } from '../features/resident/RegisterScreen';
 import { FormBanner } from '../ui/FormBanner';
 import type { AuthService } from '../auth/authService';
+import type { ResourceClients } from '../resources';
 
 export interface AuthNavigatorProps {
   /** App name shown in headers, e.g. "Resident" / "Guard". */
   appTitle: string;
   /** The shared auth service (forgot/reset are called directly; login goes through the context). */
   auth: AuthService;
+  /** Resource clients for anonymous onboarding (self-register). Omit to disable registration. */
+  resources?: ResourceClients;
 }
 
 /** Which anonymous auth screen is showing. */
-type AuthRoute = 'login' | 'forgot' | 'verify' | 'reset';
+type AuthRoute = 'login' | 'forgot' | 'verify' | 'reset' | 'register';
 
 /**
  * Minimal state-based navigator for the pre-auth flow (login → forgot → verify → reset → login).
@@ -27,11 +32,26 @@ type AuthRoute = 'login' | 'forgot' | 'verify' | 'reset';
  * validated server-side only at the final reset call. So step 2 validates the code's FORMAT and
  * carries it to step 3, where `resetPassword(identifier, code, newPassword)` does the real check.
  */
-export function AuthNavigator({ appTitle, auth }: AuthNavigatorProps) {
+export function AuthNavigator({ appTitle, auth, resources }: AuthNavigatorProps) {
   const [route, setRoute] = useState<AuthRoute>('login');
   const [resetIdentifier, setResetIdentifier] = useState('');
   const [resetCode, setResetCode] = useState('');
   const [loginNotice, setLoginNotice] = useState('');
+  const [registerEnabled, setRegisterEnabled] = useState(false);
+
+  useEffect(() => {
+    if (!resources) return;
+    let active = true;
+    resources.onboarding
+      .getConfig()
+      .then((cfg) => {
+        if (active) setRegisterEnabled(cfg.selfRegistrationEnabled);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [resources]);
 
   const goLogin = (notice = '') => {
     setLoginNotice(notice);
@@ -39,7 +59,22 @@ export function AuthNavigator({ appTitle, auth }: AuthNavigatorProps) {
     setRoute('login');
   };
 
+  useEffect(() => {
+    if (route === 'login') return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      goLogin();
+      return true;
+    });
+    return () => sub.remove();
+  }, [route]);
+
   switch (route) {
+    case 'register':
+      return resources ? (
+        <RegisterScreen resources={resources} onBack={() => goLogin()} />
+      ) : (
+        <LoginScreen appTitle={appTitle} onForgotPassword={() => setRoute('forgot')} />
+      );
     case 'forgot':
       return (
         <ForgotPasswordScreen
@@ -82,8 +117,7 @@ export function AuthNavigator({ appTitle, auth }: AuthNavigatorProps) {
             setLoginNotice('');
             setRoute('forgot');
           }}
-          // The login screen owns its own error banner; the success notice (e.g. post-reset) is
-          // rendered above it via a small wrapper so the two don't collide.
+          {...(registerEnabled && resources ? { onRegister: () => { setLoginNotice(''); setRoute('register'); } } : {})}
           {...(loginNotice
             ? { headerSlot: <FormBanner message={loginNotice} tone="success" testID="login-notice" /> }
             : {})}

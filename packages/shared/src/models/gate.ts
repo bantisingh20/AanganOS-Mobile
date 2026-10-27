@@ -14,6 +14,7 @@ export interface VisitPass {
   readonly hostResidentId: string | null;
   readonly visitorName: string;
   readonly phone: string | null;
+  readonly email: string | null;
   readonly vehicleNumber: string | null;
   readonly vehicleType: string | null;
   readonly numberOfPersons: number | null;
@@ -44,6 +45,8 @@ export interface Visitor {
   readonly hostUnitId: string;
   readonly name: string;
   readonly phone: string | null;
+  readonly email: string | null;
+  readonly qrToken: string | null;
   /** Configurable visitor-category code (`Visitor_Category` list). */
   readonly category: string;
   readonly photoFileId: string | null;
@@ -61,6 +64,44 @@ export interface Visitor {
   readonly approvalDecisionAtUtc: string | null;
   /** Whether the walk-in may be admitted (only when approved, Req 24.4, 24.5). */
   readonly isAdmittable: boolean;
+}
+
+export interface RegisterWalkInResult {
+  readonly visitor: Visitor;
+  readonly autoApproved: boolean;
+  readonly otp: string | null;
+}
+
+export interface VehicleLookupHostResident {
+  readonly name: string;
+  readonly phone: string | null;
+  readonly residentType: string;
+}
+
+export interface VehicleLookupMatch {
+  readonly matchType: 'resident' | 'visit_pass' | 'walk_in';
+  readonly vehicleType: string | null;
+  readonly personName: string;
+  readonly personPhone: string | null;
+  readonly personEmail: string | null;
+  readonly unitId: string | null;
+  readonly unitNumber: string | null;
+  readonly status: string | null;
+  readonly hostResidents: VehicleLookupHostResident[];
+}
+
+export interface VehicleLookupResult {
+  readonly plate: string;
+  readonly matches: VehicleLookupMatch[];
+}
+
+export type ScanAction = 'checked_in' | 'checked_out' | 'closed' | 'rejected';
+
+export interface ScanAccessResult {
+  readonly action: ScanAction;
+  readonly authorizationType: string;
+  readonly name: string;
+  readonly reason: string | null;
 }
 
 /** Mirror of `VerifyVisitPassResult` — outcome of a gate verification by QR/OTP (Req 23.3, 23.4). */

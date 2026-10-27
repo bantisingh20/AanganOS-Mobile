@@ -12,6 +12,7 @@ import type { PagedData } from '../../models/envelope';
 import type { AppNotification } from '../../models/notification';
 import type { ResourceClients } from '../../resources';
 import { humanizeCode } from './status';
+import { parseUtc } from './datetime';
 
 export interface NotificationsScreenProps {
   resources: ResourceClients;
@@ -170,7 +171,7 @@ export function NotificationsScreen({ resources, onBack }: NotificationsScreenPr
 
 /** Friendly relative-ish time: "just now", "2h ago", or a local date for older items. */
 function formatWhen(iso: string): string {
-  const d = new Date(iso);
+  const d = parseUtc(iso);
   if (Number.isNaN(d.getTime())) return iso;
   const mins = Math.floor((Date.now() - d.getTime()) / 60000);
   if (mins < 1) return 'just now';

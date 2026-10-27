@@ -5,13 +5,12 @@ import { FormScreen } from '../../ui/FormScreen';
 import { FormSection } from '../../ui/FormSection';
 import { AsyncBoundary } from '../../ui/AsyncBoundary';
 import { EntityCard } from '../../ui/EntityCard';
-import { Badge } from '../../ui/Badge';
 import { useAsync } from '../../ui/hooks';
 import { theme } from '../../ui/theme';
 import type { EmergencyContact } from '../../models/resident';
 import type { ResourceClients } from '../../resources';
 import { verificationTone, humanizeCode } from '../shared/status';
-import { UnitDetailView } from '../shared/UnitDetailView';
+import { MyUnitCard } from './MyUnitCard';
 import { useMyResident } from './useMyResident';
 
 export interface MyHouseholdScreenProps {
@@ -52,39 +51,44 @@ export function MyHouseholdScreen({ resources, onBack }: MyHouseholdScreenProps)
       >
         {resident ? (
           <>
-            {/* Banner + overlapping identity card (consistent with the Profile tab redesign). */}
-            <View style={styles.banner}>
-              <View style={styles.bannerBlobA} />
-              <View style={styles.bannerBlobB} />
-            </View>
-            <View style={styles.identityWrap}>
-              <View style={styles.avatarClay}>
+            <View style={styles.hero}>
+              <View style={styles.heroBlobA} />
+              <View style={styles.heroBlobB} />
+              <View style={styles.heroRing} />
+
+              <View style={styles.avatarRing}>
                 <View style={styles.avatar}>
                   <Text style={styles.initials}>{initialsOf(resident.name)}</Text>
                 </View>
               </View>
-              <View style={styles.identityCard}>
-                <Text style={styles.name} numberOfLines={1}>{resident.name}</Text>
-                <View style={styles.heroBadges}>
-                  <Badge label={humanizeCode(resident.residentType)} tone="neutral" />
-                  <Badge label={humanizeCode(resident.verificationStatus)} tone={verificationTone(resident.verificationStatus)} />
+
+              <Text style={styles.heroName} numberOfLines={1}>{resident.name}</Text>
+
+              <View style={styles.heroBadges}>
+                <View style={styles.heroPill}>
+                  <Ionicons name="person" size={12} color={theme.color.primaryText} />
+                  <Text style={styles.heroPillText}>{humanizeCode(resident.residentType)}</Text>
                 </View>
-
-                {/* Contact rows inside the card (replaces the dark hero chips). */}
-                {(resident.phone || resident.email) ? (
-                  <View style={styles.contactRows}>
-                    {resident.phone ? <ContactLine icon="call-outline" label={resident.phone} tint={theme.color.success} /> : null}
-                    {resident.email ? <ContactLine icon="mail-outline" label={resident.email} tint={theme.color.info} /> : null}
-                  </View>
-                ) : null}
-
-                {/* Inline stat tiles: resident type · verification · units count. */}
-                <View style={styles.statRow}>
-                  <StatTile icon="people" value={humanizeCode(resident.residentType)} label="Type" tint={theme.color.primary} />
-                  <StatTile icon="shield-checkmark" value={humanizeCode(resident.verificationStatus)} label="Status" tint={verificationTone(resident.verificationStatus) === 'positive' ? theme.color.success : theme.color.warning} />
-                  <StatTile icon="home" value={String(myUnits.length)} label={myUnits.length === 1 ? 'Unit' : 'Units'} tint={theme.color.info} />
+                <View style={styles.heroPill}>
+                  <Ionicons name="shield-checkmark" size={12} color={theme.color.primaryText} />
+                  <Text style={styles.heroPillText}>{humanizeCode(resident.verificationStatus)}</Text>
                 </View>
               </View>
+
+              {(resident.phone || resident.email) ? (
+                <View style={styles.heroContacts}>
+                  {resident.phone ? <HeroContact icon="call" label={resident.phone} /> : null}
+                  {resident.email ? <HeroContact icon="mail" label={resident.email} /> : null}
+                </View>
+              ) : null}
+            </View>
+
+            <View style={styles.statCard}>
+              <StatTile icon="people" value={humanizeCode(resident.residentType)} label="Type" tint={theme.color.primary} />
+              <View style={styles.statSep} />
+              <StatTile icon="shield-checkmark" value={humanizeCode(resident.verificationStatus)} label="Status" tint={verificationTone(resident.verificationStatus) === 'positive' ? theme.color.success : theme.color.warning} />
+              <View style={styles.statSep} />
+              <StatTile icon="home" value={String(myUnits.length)} label={myUnits.length === 1 ? 'Unit' : 'Units'} tint={theme.color.info} />
             </View>
 
             <EmergencyContacts resources={resources} residentId={resident.id} />
@@ -113,7 +117,7 @@ export function MyHouseholdScreen({ resources, onBack }: MyHouseholdScreenProps)
           >
             <View style={styles.units}>
               {myUnits.map((u) => (
-                <UnitDetailView key={u.unitId} resources={resources} unitId={u.unitId} showHistory={false} />
+                <MyUnitCard key={u.unitId} resources={resources} unitId={u.unitId} />
               ))}
             </View>
           </AsyncBoundary>
@@ -123,14 +127,12 @@ export function MyHouseholdScreen({ resources, onBack }: MyHouseholdScreenProps)
   );
 }
 
-/** A contact line inside the identity card: tinted icon tile + value. */
-function ContactLine({ icon, label, tint }: { icon: keyof typeof Ionicons.glyphMap; label: string; tint: string }) {
+/** A translucent contact chip on the hero. */
+function HeroContact({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; label: string }) {
   return (
-    <View style={styles.contactLine}>
-      <View style={[styles.contactIcon, { backgroundColor: `${tint}1f` }]}>
-        <Ionicons name={icon} size={15} color={tint} />
-      </View>
-      <Text style={styles.contactText} numberOfLines={1}>{label}</Text>
+    <View style={styles.heroContactChip}>
+      <Ionicons name={icon} size={14} color={theme.color.primaryText} />
+      <Text style={styles.heroContactText} numberOfLines={1}>{label}</Text>
     </View>
   );
 }
@@ -186,51 +188,61 @@ function EmergencyContacts({ resources, residentId }: { resources: ResourceClien
 }
 
 const styles = StyleSheet.create({
-  // Banner + overlapping identity card (matches the Profile tab language).
-  banner: {
-    height: 120,
+  hero: {
     backgroundColor: theme.color.hero,
     borderRadius: theme.radius.xl,
+    paddingVertical: theme.spacing.xl,
+    paddingHorizontal: theme.spacing.lg,
+    alignItems: 'center',
+    gap: theme.spacing.sm,
     overflow: 'hidden',
+    ...theme.shadow.hero,
   },
-  bannerBlobA: {
-    position: 'absolute', top: -40, right: -30, width: 150, height: 150, borderRadius: 75,
+  heroBlobA: {
+    position: 'absolute', top: -50, right: -40, width: 170, height: 170, borderRadius: 85,
     backgroundColor: theme.color.heroAlt, opacity: 0.9,
   },
-  bannerBlobB: {
-    position: 'absolute', bottom: -50, left: -20, width: 120, height: 120, borderRadius: 60,
-    backgroundColor: theme.color.primary, opacity: 0.25,
+  heroBlobB: {
+    position: 'absolute', bottom: -60, left: -30, width: 140, height: 140, borderRadius: 70,
+    backgroundColor: theme.color.primary, opacity: 0.22,
   },
-  identityWrap: { marginTop: -60, alignItems: 'center' },
-  avatarClay: {
-    width: 96, height: 96, borderRadius: theme.radius.pill,
-    backgroundColor: theme.color.surface, alignItems: 'center', justifyContent: 'center',
-    zIndex: 2,
-    shadowColor: '#0b1726', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.22, shadowRadius: 14, elevation: 8,
+  heroRing: {
+    position: 'absolute', top: -30, left: -30, width: 120, height: 120, borderRadius: 60,
+    borderWidth: 2, borderColor: 'rgba(255,255,255,0.08)',
+  },
+  avatarRing: {
+    width: 92, height: 92, borderRadius: theme.radius.pill,
+    backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)',
   },
   avatar: {
-    width: 80, height: 80, borderRadius: theme.radius.pill,
-    backgroundColor: theme.color.accentSoft, alignItems: 'center', justifyContent: 'center',
+    width: 72, height: 72, borderRadius: theme.radius.pill,
+    backgroundColor: theme.color.surface, alignItems: 'center', justifyContent: 'center',
   },
   initials: { fontSize: theme.fontSize.title, fontWeight: '800', color: theme.color.primary },
-  identityCard: {
-    marginTop: -48, width: '100%',
-    backgroundColor: theme.color.surface, borderRadius: theme.radius.xl,
-    paddingTop: 56, paddingBottom: theme.spacing.lg, paddingHorizontal: theme.spacing.lg,
-    alignItems: 'center', gap: theme.spacing.sm,
+  heroName: { fontSize: theme.fontSize.heading, fontWeight: '800', color: theme.color.primaryText, textAlign: 'center' },
+  heroBadges: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: theme.spacing.sm },
+  heroPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: theme.color.onHeroSoft,
+    paddingHorizontal: theme.spacing.md, paddingVertical: 6, borderRadius: theme.radius.pill,
+  },
+  heroPillText: { color: theme.color.primaryText, fontSize: theme.fontSize.caption, fontWeight: '700' },
+  heroContacts: { alignSelf: 'stretch', gap: theme.spacing.sm, marginTop: theme.spacing.xs },
+  heroContactChip: {
+    flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm,
+    backgroundColor: theme.color.onHeroSoft,
+    paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm, borderRadius: theme.radius.md,
+  },
+  heroContactText: { flex: 1, color: theme.color.primaryText, fontSize: theme.fontSize.label, fontWeight: '600' },
+  statCard: {
+    flexDirection: 'row', alignItems: 'center',
+    marginTop: -theme.spacing.lg, marginHorizontal: theme.spacing.sm,
+    backgroundColor: theme.color.surface, borderRadius: theme.radius.lg,
+    paddingVertical: theme.spacing.md, paddingHorizontal: theme.spacing.sm,
     ...theme.shadow.card,
   },
-  name: { fontSize: theme.fontSize.title, fontWeight: '800', color: theme.color.text, textAlign: 'center' },
-  heroBadges: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: theme.spacing.sm },
-  contactRows: { alignSelf: 'stretch', gap: theme.spacing.sm, marginTop: theme.spacing.xs },
-  contactLine: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
-  contactIcon: { width: 32, height: 32, borderRadius: theme.radius.md, alignItems: 'center', justifyContent: 'center' },
-  contactText: { flex: 1, fontSize: theme.fontSize.label, color: theme.color.text, fontWeight: '600' },
-  statRow: {
-    flexDirection: 'row', alignSelf: 'stretch', gap: theme.spacing.sm,
-    marginTop: theme.spacing.md, paddingTop: theme.spacing.md,
-    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.color.border,
-  },
+  statSep: { width: StyleSheet.hairlineWidth, alignSelf: 'stretch', marginVertical: 4, backgroundColor: theme.color.border },
   statTile: { flex: 1, alignItems: 'center', gap: 4 },
   statIcon: { width: 40, height: 40, borderRadius: theme.radius.md, alignItems: 'center', justifyContent: 'center' },
   statValue: { fontSize: theme.fontSize.label, fontWeight: '800', color: theme.color.text, textAlign: 'center' },

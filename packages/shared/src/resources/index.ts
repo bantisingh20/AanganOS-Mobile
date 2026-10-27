@@ -13,6 +13,7 @@ import { AnnouncementsClient } from './announcementsClient';
 import { FileClient } from './fileClient';
 import { UsersClient } from './usersClient';
 import { NotificationsClient } from './notificationsClient';
+import { OnboardingClient } from './onboardingClient';
 
 export * from './query';
 export * from './notificationsClient';
@@ -30,6 +31,7 @@ export * from './parcelClient';
 export * from './helpdeskClient';
 export * from './maintenanceClient';
 export * from './announcementsClient';
+export * from './onboardingClient';
 export * from './offlineQueue';
 
 /**
@@ -62,6 +64,8 @@ export interface ResourceClients {
   readonly users: UsersClient;
   /** In-app notification inbox: the signed-in user's own notifications + read state. */
   readonly notifications: NotificationsClient;
+  /** Anonymous resident self-onboarding: config flag, community/unit pickers, self-register. */
+  readonly onboarding: OnboardingClient;
 }
 
 /** Construct the bundle of resource clients over an {@link ApiClient}. */
@@ -81,5 +85,6 @@ export function createResourceClients(api: ApiClient): ResourceClients {
     files: new FileClient(api),
     users: new UsersClient(api),
     notifications: new NotificationsClient(api),
+    onboarding: new OnboardingClient(api),
   };
 }
