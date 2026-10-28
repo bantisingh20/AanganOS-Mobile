@@ -27,6 +27,8 @@ export interface PhotoPickerProps {
   onPickLocal?: (file: LocalFile | null) => void;
   /** 'horizontal' (default): thumb left, buttons right. 'vertical': big thumb on top, buttons below. */
   layout?: 'horizontal' | 'vertical';
+  /** Hide the field label/header (the caller provides its own context). */
+  hideLabel?: boolean;
 }
 
 /**
@@ -39,7 +41,7 @@ export interface PhotoPickerProps {
  * <p>`expo-image-picker` is a native module provided by the host app, imported dynamically so the
  * shared package carries no hard dependency on it (same decoupling as the secure-store adapter).</p>
  */
-export function PhotoPicker({ label, required = false, files, upload, value, onChange, disabled = false, onPickLocal, layout = 'horizontal' }: PhotoPickerProps) {
+export function PhotoPicker({ label, required = false, files, upload, value, onChange, disabled = false, onPickLocal, layout = 'horizontal', hideLabel = false }: PhotoPickerProps) {
   const vertical = layout === 'vertical';
   const [previewUri, setPreviewUri] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -111,10 +113,12 @@ export function PhotoPicker({ label, required = false, files, upload, value, onC
 
   return (
     <View style={styles.container}>
-      <Text style={styles.label}>
-        {label}
-        {required ? <Text style={styles.required}> *</Text> : null}
-      </Text>
+      {hideLabel ? null : (
+        <Text style={styles.label}>
+          {label}
+          {required ? <Text style={styles.required}> *</Text> : null}
+        </Text>
+      )}
 
       <View style={vertical ? styles.colLayout : styles.row}>
         {thumbSource ? (

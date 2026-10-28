@@ -7,6 +7,8 @@ import { buildQuery, listQueryParams } from './query';
 /** Extra server-side filter for the announcement list. */
 export interface AnnouncementListFilters {
   readonly category?: string;
+  /** Only notices published on/after this ISO date-time (server-side `publishedAtUtc >=`). */
+  readonly fromDate?: string;
   /** Admin management view: also return deactivated notices (residents see active-only). */
   readonly includeInactive?: boolean;
 }
@@ -45,6 +47,7 @@ export class AnnouncementsClient {
     const qs = buildQuery({
       ...listQueryParams(query),
       category: filters.category,
+      fromDate: filters.fromDate,
       ...(filters.includeInactive ? { includeInactive: true } : {}),
     });
     return this.api.get<PagedData<Announcement>>(`/api/v1/announcements${qs}`, options);

@@ -31,8 +31,6 @@ export interface WalkInApprovalsScreenProps {
 type StatusFilter = 'pending' | 'approved' | 'rejected' | 'all';
 const FILTERS: { key: StatusFilter; label: string }[] = [
   { key: 'pending', label: 'Pending' },
-  { key: 'approved', label: 'Approved' },
-  { key: 'rejected', label: 'Rejected' },
   { key: 'all', label: 'All' },
 ];
 
@@ -311,10 +309,24 @@ function VisitorList({
                   <Text style={styles.cardSub} numberOfLines={1}>
                     {humanizeCode(v.category)}
                     {v.vehicleNumber ? ` · ${v.vehicleNumber}` : ''}
-                    {v.gateLocation ? ` · ${v.gateLocation}` : ''}
                   </Text>
+                  {v.phone ? (
+                    <View style={styles.metaRow}>
+                      <Ionicons name="call-outline" size={13} color={theme.color.mutedText} />
+                      <Text style={styles.cardMeta} numberOfLines={1}>{v.phone}</Text>
+                    </View>
+                  ) : null}
                   {v.whomToMeet ? (
-                    <Text style={styles.cardMeta} numberOfLines={1}>To meet: {v.whomToMeet}</Text>
+                    <View style={styles.metaRow}>
+                      <Ionicons name="person-outline" size={13} color={theme.color.mutedText} />
+                      <Text style={styles.cardMeta} numberOfLines={1}>To meet: {v.whomToMeet}</Text>
+                    </View>
+                  ) : null}
+                  {v.hostUnitNumber ? (
+                    <View style={styles.metaRow}>
+                      <Ionicons name="home-outline" size={13} color={theme.color.mutedText} />
+                      <Text style={styles.cardMeta} numberOfLines={1}>Unit {v.hostUnitNumber}</Text>
+                    </View>
                   ) : null}
                 </View>
                 <Badge label={humanizeCode(v.status)} tone={gateStatusTone(v.status)} />
@@ -503,7 +515,8 @@ const styles = StyleSheet.create({
   cardBody: { flex: 1, gap: 2 },
   cardTitle: { fontSize: theme.fontSize.body, fontWeight: '800', color: theme.color.text },
   cardSub: { fontSize: theme.fontSize.caption, color: theme.color.mutedText },
-  cardMeta: { fontSize: theme.fontSize.caption, color: theme.color.mutedText },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  cardMeta: { flex: 1, fontSize: theme.fontSize.caption, color: theme.color.mutedText },
   row: { flexDirection: 'row', gap: theme.spacing.sm },
   flex: { flex: 1 },
   onSiteRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },

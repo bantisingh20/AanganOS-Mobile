@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { FormScreen } from '../../ui/FormScreen';
 import { FormSection } from '../../ui/FormSection';
 import { AppTextField } from '../../ui/AppTextField';
 import { AppButton } from '../../ui/AppButton';
 import { EntityCard } from '../../ui/EntityCard';
-import { PhotoPicker } from '../../ui/PhotoPicker';
+import { FaceSelfieCapture } from '../../ui/FaceSelfieCapture';
 import { MasterDataDropdown } from '../../ui/MasterDataDropdown';
 import { useAsyncAction } from '../../ui/hooks';
 import { emitToast } from '../../ui/toastBus';
@@ -15,6 +16,7 @@ import { ListRow } from '../../ui/ListRow';
 import { GateMasterDataKeys } from '../../models/gate';
 import type { Unit } from '../../models/community';
 import type { RegisterWalkInResult } from '../../models/gate';
+import type { LocalFile } from '../../resources/fileClient';
 import type { ResourceClients } from '../../resources';
 import { gateStatusTone, humanizeCode } from '../shared/status';
 import { UnitDropdown } from '../../ui/UnitDropdown';
@@ -48,10 +50,45 @@ export function WalkInCaptureScreen({ resources, onBack }: WalkInCaptureScreenPr
   const [idProofNumber, setIdProofNumber] = useState('');
   const [purpose, setPurpose] = useState('');
   const [whomToMeet, setWhomToMeet] = useState('');
+  const [autoWhom, setAutoWhom] = useState('');
   const [duration, setDuration] = useState('');
   const [vehicle, setVehicle] = useState('');
   const [photoFileId, setPhotoFileId] = useState<string | null>(null);
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [registered, setRegistered] = useState<RegisterWalkInResult | null>(null);
+
+  const onPhotoCaptured = async (file: LocalFile) => {
+    setCameraOpen(false);
+    if (!unit) return;
+    setPhotoUri(file.uri);
+    setUploadingPhoto(true);
+    try {
+      const ref = await resources.files.upload(file, { owningResourceType: 'Visitor', communityId: unit.communityId });
+      setPhotoFileId(ref.reference);
+    } catch {
+      setPhotoUri(null);
+      emitToast({ tone: 'error', title: 'Upload failed', message: 'Could not upload the photo. Try again.' });
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
+  const onSelectUnit = async (u: Unit | null) => {
+    setUnit(u);
+    if (!u) return;
+    try {
+      const members = await resources.units.listHousehold(u.id);
+      const owner = members.find((m) => m.residentType?.toLowerCase() === 'owner') ?? members[0];
+      if (owner) {
+        setWhomToMeet((prev) => (!prev.trim() || prev === autoWhom ? owner.name : prev));
+        setAutoWhom(owner.name);
+      }
+    } catch {
+      // No-op: leave the field for manual entry if the household can't be read.
+    }
+  };
 
   const register = useAsyncAction(() => {
     const durationMinutes = duration.trim() ? Number(duration.trim()) : undefined;
@@ -84,9 +121,11 @@ export function WalkInCaptureScreen({ resources, onBack }: WalkInCaptureScreenPr
     setIdProofNumber('');
     setPurpose('');
     setWhomToMeet('');
+    setAutoWhom('');
     setDuration('');
     setVehicle('');
     setPhotoFileId(null);
+    setPhotoUri(null);
     register.reset();
   };
 
@@ -160,42 +199,56 @@ export function WalkInCaptureScreen({ resources, onBack }: WalkInCaptureScreenPr
 
   const busy = register.running;
 
+  if (cameraOpen) {
+    return (
+      <FormScreen title="Capture visitor photo" subtitle="Align the face in the frame" onBack={() => setCameraOpen(false)}>
+        <FaceSelfieCapture initialFacing="back" onCapture={(f) => void onPhotoCaptured(f)} onCancel={() => setCameraOpen(false)} />
+      </FormScreen>
+    );
+  }
+
   return (
     <FormScreen title="Register walk-in" subtitle="Capture the visitor's details" {...(onBack ? { onBack } : {})}>
-      <FormSection title="Host unit" icon="home" tint={theme.color.info}>
-        <UnitDropdown resources={resources} value={unit} onSelect={setUnit} required disabled={busy} />
-      </FormSection>
-
-      <FormSection title="Visitor" icon="person" tint={theme.color.primary}>
-        <AppTextField
-          label="Name"
-          required
-          value={name}
-          onChangeText={setName}
-          placeholder="Visitor's name"
-          autoCapitalize="words"
-          editable={!busy}
-        />
+      <FormSection title="Visitor details" subtitle="Capture everything in one place" icon="person" tint={theme.color.primary}>
         {unit ? (
-          <PhotoPicker
-            label="Photo of the person"
-            files={resources.files}
-            upload={{ owningResourceType: 'Visitor', communityId: unit.communityId }}
-            value={photoFileId}
-            onChange={setPhotoFileId}
-            disabled={busy}
-          />
-        ) : (
-          <Text style={styles.note}>Pick the host unit first to capture the visitor&apos;s photo.</Text>
-        )}
-        <AppTextField
-          label="Phone"
-          value={phone}
-          onChangeText={setPhone}
-          placeholder="Contact number"
-          keyboardType="phone-pad"
-          editable={!busy}
-        />
+          <View style={styles.photoCol}>
+            <Pressable
+              onPress={() => setCameraOpen(true)}
+              disabled={busy || uploadingPhoto}
+              accessibilityRole="button"
+              accessibilityLabel={photoUri ? 'Retake photo' : 'Capture photo'}
+              style={styles.photoThumb}
+            >
+              {photoUri ? (
+                <Image source={{ uri: photoUri }} style={styles.photoImg} />
+              ) : (
+                <>
+                  <Ionicons name="camera" size={44} color={theme.color.primary} />
+                  <Text style={styles.photoHint}>Tap to capture</Text>
+                </>
+              )}
+              {uploadingPhoto ? <View style={styles.photoOverlay}><Ionicons name="cloud-upload" size={26} color="#fff" /></View> : null}
+            </Pressable>
+            {photoUri ? (
+              <Pressable
+                onPress={() => setCameraOpen(true)}
+                disabled={busy || uploadingPhoto}
+                accessibilityRole="button"
+                accessibilityLabel="Retake photo"
+                style={({ pressed }) => [styles.photoBtn, pressed ? styles.photoBtnPressed : null]}
+              >
+                <Ionicons name="camera" size={18} color={theme.color.primary} />
+                <Text style={styles.photoBtnText}>Retake</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
+
+        <UnitDropdown resources={resources} value={unit} onSelect={(u) => void onSelectUnit(u)} required disabled={busy} />
+        {!unit ? <Text style={styles.note}>Pick the host unit first to capture the visitor&apos;s photo.</Text> : null}
+
+        <AppTextField label="Name" required value={name} onChangeText={setName} placeholder="Visitor's name" autoCapitalize="words" editable={!busy} />
+        <AppTextField label="Phone" value={phone} onChangeText={setPhone} placeholder="Contact number" keyboardType="phone-pad" editable={!busy} />
         <MasterDataDropdown
           label="Category"
           required
@@ -206,9 +259,9 @@ export function WalkInCaptureScreen({ resources, onBack }: WalkInCaptureScreenPr
           onChange={setCategory}
           placeholder="Select a visitor category"
         />
-      </FormSection>
 
-      <FormSection title="ID proof" subtitle="Captured for the record" icon="card" tint={theme.color.warning}>
+        <View style={styles.divider} />
+
         <MasterDataDropdown
           label="ID type"
           listKey={GateMasterDataKeys.IdProofType}
@@ -219,48 +272,14 @@ export function WalkInCaptureScreen({ resources, onBack }: WalkInCaptureScreenPr
           placeholder="Select an ID type"
           allowClear
         />
-        <AppTextField
-          label="ID number"
-          value={idProofNumber}
-          onChangeText={setIdProofNumber}
-          placeholder="e.g. last 4 digits"
-          autoCapitalize="characters"
-          editable={!busy}
-        />
-      </FormSection>
+        <AppTextField label="ID number" value={idProofNumber} onChangeText={setIdProofNumber} placeholder="e.g. last 4 digits" autoCapitalize="characters" editable={!busy} />
 
-      <FormSection title="Visit details" subtitle="For future reference" icon="clipboard" tint={theme.color.info}>
-        <AppTextField
-          label="Purpose"
-          value={purpose}
-          onChangeText={setPurpose}
-          placeholder="e.g. parcel delivery, AC repair"
-          editable={!busy}
-        />
-        <AppTextField
-          label="Whom to meet"
-          value={whomToMeet}
-          onChangeText={setWhomToMeet}
-          placeholder="Person they're here to meet"
-          autoCapitalize="words"
-          editable={!busy}
-        />
-        <AppTextField
-          label="Expected duration (minutes)"
-          value={duration}
-          onChangeText={setDuration}
-          placeholder="e.g. 30"
-          keyboardType="number-pad"
-          editable={!busy}
-        />
-        <AppTextField
-          label="Vehicle number"
-          value={vehicle}
-          onChangeText={setVehicle}
-          placeholder="e.g. MH12AB1234"
-          autoCapitalize="characters"
-          editable={!busy}
-        />
+        <View style={styles.divider} />
+
+        <AppTextField label="Purpose" value={purpose} onChangeText={setPurpose} placeholder="e.g. parcel delivery, AC repair" editable={!busy} />
+        <AppTextField label="Whom to meet" value={whomToMeet} onChangeText={setWhomToMeet} placeholder="Person they're here to meet" autoCapitalize="words" editable={!busy} />
+        <AppTextField label="Expected duration (minutes)" value={duration} onChangeText={setDuration} placeholder="e.g. 30" keyboardType="number-pad" editable={!busy} />
+        <AppTextField label="Vehicle number" value={vehicle} onChangeText={setVehicle} placeholder="e.g. MH12AB1234" autoCapitalize="characters" editable={!busy} />
       </FormSection>
 
       <View style={styles.actions}>
@@ -277,6 +296,15 @@ export function WalkInCaptureScreen({ resources, onBack }: WalkInCaptureScreenPr
 
 const styles = StyleSheet.create({
   note: { fontSize: theme.fontSize.caption, color: theme.color.mutedText, lineHeight: 18 },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: theme.color.border, marginVertical: theme.spacing.xs },
   qrWrap: { alignItems: 'center', paddingVertical: 8 },
   actions: { marginTop: theme.spacing.sm },
+  photoCol: { alignItems: 'center', gap: theme.spacing.sm, marginBottom: theme.spacing.sm },
+  photoThumb: { width: 180, height: 180, borderRadius: 90, backgroundColor: theme.color.accentSoft, borderWidth: 2, borderColor: theme.color.primary, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', gap: 6 },
+  photoImg: { width: '100%', height: '100%' },
+  photoHint: { fontSize: theme.fontSize.caption, color: theme.color.primary, fontWeight: '700' },
+  photoOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)', alignItems: 'center', justifyContent: 'center' },
+  photoBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm, borderRadius: theme.radius.md, borderWidth: 1.5, borderColor: theme.color.primary },
+  photoBtnPressed: { opacity: 0.7 },
+  photoBtnText: { color: theme.color.primary, fontSize: theme.fontSize.label, fontWeight: '800' },
 });

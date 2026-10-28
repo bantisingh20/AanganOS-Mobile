@@ -33,6 +33,12 @@ export interface Resident {
   readonly isArchived: boolean;
   /** Optional File_Service reference to the resident's photo, else null. Never mandatory. */
   readonly photoFileId: string | null;
+  readonly dateOfBirth: string | null;
+  readonly gender: string | null;
+  readonly moveInDate: string | null;
+  readonly govtIdType: string | null;
+  readonly govtIdFrontFileId: string | null;
+  readonly govtIdBackFileId: string | null;
 }
 
 /**

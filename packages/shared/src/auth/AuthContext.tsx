@@ -214,7 +214,7 @@ export function AuthProvider({
   const login = useCallback(
     async (request: LoginRequest): Promise<LoginResponse> => {
       const result = await auth.login(request);
-      await applySession(result, request.identifier);
+      await applySession(result, result.user?.name ?? request.identifier);
       return result;
     },
     [auth, applySession],

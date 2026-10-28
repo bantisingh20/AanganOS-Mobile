@@ -14,7 +14,22 @@ export interface LoginRequest {
   readonly platform?: string;
 }
 
-/** `POST /auth/login` and `/auth/refresh` success data: access token + roles + the refresh token. */
+/** The signed-in principal's profile summary returned at login/refresh (mirror of `LoginUserDto`). */
+export interface LoginUser {
+  readonly userId: string;
+  readonly name: string | null;
+  readonly email: string | null;
+  readonly phone: string | null;
+  readonly residentId: string | null;
+  readonly communityId: string | null;
+  readonly communityName: string | null;
+  readonly organizationId: string | null;
+  readonly organizationName: string | null;
+  readonly roles: string[];
+  readonly permissions: string[];
+}
+
+/** `POST /auth/login` and `/auth/refresh` success data: access token + roles + refresh token + the user profile. */
 export interface LoginResponse {
   readonly accessToken: string;
   /** ISO-8601 UTC expiry (serialized `DateTime`). */
@@ -22,6 +37,8 @@ export interface LoginResponse {
   readonly roles: string[];
   /** Opaque one-time-use refresh token for silent re-auth; stored securely, swapped at `/auth/refresh`. */
   readonly refreshToken: string;
+  /** The signed-in user's profile summary (name, community, permissions, ...). */
+  readonly user: LoginUser;
 }
 
 /** `POST /auth/password/forgot` body. */

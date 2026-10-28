@@ -65,5 +65,5 @@ export default function App() {
 function ResidentHome({ core }: { core: AppCore }) {
   const { roles } = useAuth();
   const isAdmin = useMemo(() => hasAdminRole(roles), [roles]);
-  return <HomeNavigator resources={core.resources} app="resident" isAdmin={isAdmin} appTitle="Resident" />;
+  return <HomeNavigator resources={core.resources} app="resident" isAdmin={isAdmin} appTitle="Resident" logo={appLogo} />;
 }

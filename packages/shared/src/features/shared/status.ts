@@ -53,10 +53,21 @@ export function gateStatusTone(status: string): BadgeTone {
       return 'danger';
     case VisitPassStatus.Used:
     case VisitPassStatus.Expired:
+    case VisitorStatus.Expired:
     case WatchlistStatus.Cleared:
     default:
       return 'neutral';
   }
+}
+
+export function effectiveVisitPassStatus(status: string, validUntilUtc: string, now: Date = new Date()): string {
+  if (status !== VisitPassStatus.Active) return status;
+  const until = new Date(validUntilUtc);
+  return !Number.isNaN(until.getTime()) && now > until ? VisitPassStatus.Expired : status;
+}
+
+export function isVisitPassExpired(status: string, validUntilUtc: string, now: Date = new Date()): boolean {
+  return effectiveVisitPassStatus(status, validUntilUtc, now) === VisitPassStatus.Expired;
 }
 
 /** A watchlist entry's tone: an active flag is danger, a cleared one neutral (Req 26.5). */

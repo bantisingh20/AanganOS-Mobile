@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { FormScreen } from '../../ui/FormScreen';
 import { FormSection } from '../../ui/FormSection';
 import { AppTextField } from '../../ui/AppTextField';
@@ -67,8 +67,21 @@ export function InviteVisitorScreen({ resources, onBack }: InviteVisitorScreenPr
   const [photoFileId, setPhotoFileId] = useState<string | null>(null);
   const [visitDate, setVisitDate] = useState<string | null>(dateFromToday(0));
   const [validUntil, setValidUntil] = useState<string | null>(dateFromToday(1));
-  const [entries, setEntries] = useState('1');
   const [created, setCreated] = useState<CreateVisitPassResult | null>(null);
+  const [validityText, setValidityText] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    resources.onboarding
+      .getConfig()
+      .then((cfg) => {
+        if (active) setValidityText(cfg.visitPassValidityText);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [resources.onboarding]);
 
   const units = me.data?.units ?? [];
   const resident = me.data?.resident ?? null;
@@ -80,13 +93,11 @@ export function InviteVisitorScreen({ resources, onBack }: InviteVisitorScreenPr
 
   const create = useAsyncAction(() => {
     const personsNum = Number(persons.trim() || '1');
-    const entriesNum = Number(entries.trim() || '1');
     return resources.gate
       .createVisitPass({
         hostUnitId: selectedUnit!.unitId,
         visitorName: visitorName.trim(),
         validUntilUtc: endOfDay(validUntil!),
-        maxUses: entriesNum,
         numberOfPersons: personsNum,
         ...(visitDate ? { visitDateUtc: visitDate } : {}),
         ...(phone.trim() ? { phone: phone.trim() } : {}),
@@ -115,8 +126,6 @@ export function InviteVisitorScreen({ resources, onBack }: InviteVisitorScreenPr
     }
     const p = Number(persons.trim() || '1');
     if (!Number.isInteger(p) || p < 1) { warn('Number of persons must be a whole number of at least 1.'); return; }
-    const e = Number(entries.trim() || '1');
-    if (!Number.isInteger(e) || e < 1) { warn('Entries must be a whole number of at least 1.'); return; }
     void create.run();
   };
 
@@ -156,7 +165,6 @@ export function InviteVisitorScreen({ resources, onBack }: InviteVisitorScreenPr
             setPhotoFileId(null);
             setVisitDate(dateFromToday(0));
             setValidUntil(dateFromToday(1));
-            setEntries('1');
             create.reset();
           }}
           accessibilityHint="Create another visit pass"
@@ -174,7 +182,18 @@ export function InviteVisitorScreen({ resources, onBack }: InviteVisitorScreenPr
         emptyMessage="No unit is linked to your account yet, so a pass can't be created."
         onRetry={me.reload}
       >
-        <FormSection title="Visitor" icon="person" tint={theme.color.primary}>
+        <FormSection title="Visit pass details" subtitle="Fill everything in one place" icon="person" tint={theme.color.primary}>
+          <PhotoPicker
+            label="Visitor photo"
+            hideLabel
+            layout="vertical"
+            files={resources.files}
+            upload={{ owningResourceType: 'VisitPass', communityId }}
+            value={photoFileId}
+            onChange={setPhotoFileId}
+            disabled={create.running}
+          />
+
           {units.length > 1 ? (
             <Select label="Host unit" required value={effectiveUnitId} options={unitOptions} onChange={setUnitId} placeholder="Select your unit" />
           ) : null}
@@ -183,11 +202,11 @@ export function InviteVisitorScreen({ resources, onBack }: InviteVisitorScreenPr
           <AppTextField label="Email" value={email} onChangeText={setEmail} placeholder="Visitor's email (for the pass)" keyboardType="email-address" autoCapitalize="none" editable={!create.running} />
           <AppTextField label="Whom to meet / flat" value={whomToMeet} onChangeText={setWhomToMeet} placeholder="Person or flat they're visiting" autoCapitalize="words" editable={!create.running} />
           <AppTextField label="Number of persons" value={persons} onChangeText={setPersons} placeholder="1" keyboardType="number-pad" editable={!create.running} />
-        </FormSection>
 
-        <FormSection title="Vehicle" subtitle="Optional" icon="car-sport" tint="#cf5500">
+          <View style={styles.divider} />
+
           <MasterDataDropdown
-            label="Vehicle type"
+            label="Vehicle type (optional)"
             listKey={GateMasterDataKeys.VehicleType}
             masterData={resources.masterData}
             {...(communityId ? { communityId } : {})}
@@ -197,24 +216,16 @@ export function InviteVisitorScreen({ resources, onBack }: InviteVisitorScreenPr
             allowClear
           />
           <AppTextField label="Vehicle number" value={vehicle} onChangeText={setVehicle} placeholder="e.g. MH12AB1234" autoCapitalize="characters" editable={!create.running} />
-        </FormSection>
 
-        <FormSection title="Photo" subtitle="Capture the visitor for the record" icon="camera" tint={theme.color.warning}>
-          <PhotoPicker
-            label="Visitor photo"
-            files={resources.files}
-            upload={{ owningResourceType: 'VisitPass', communityId }}
-            value={photoFileId}
-            onChange={setPhotoFileId}
-            disabled={create.running}
-          />
-        </FormSection>
+          <View style={styles.divider} />
 
-        <FormSection title="When & access" subtitle="Visit date, validity and entries" icon="time" tint={theme.color.info}>
           <DateField label="Date of visit" value={visitDate} onChange={(d) => setVisitDate(d ? d.toISOString() : null)} minimumDate={dateFromToday(0)} disabled={create.running} />
           <DateField label="Valid until" required value={validUntil} onChange={(d) => setValidUntil(d ? d.toISOString() : null)} minimumDate={dateFromToday(0)} disabled={create.running} />
-          <AppTextField label="Entries allowed" value={entries} onChangeText={setEntries} placeholder="1" keyboardType="number-pad" editable={!create.running} />
         </FormSection>
+
+        {validityText ? (
+          <Text style={styles.validityNote}>This pass will be valid for {validityText} after it is created.</Text>
+        ) : null}
 
         <AppButton title="Create pass" loading={create.running} onPress={onSubmit} accessibilityHint="Create a visit pass and get a shareable QR and code" />
       </AsyncBoundary>
@@ -244,4 +255,6 @@ function formatDate(iso: string): string {
 
 const styles = StyleSheet.create({
   qrWrap: { alignItems: 'center', paddingVertical: 8 },
+  divider: { height: 1, backgroundColor: theme.color.border, marginVertical: 12 },
+  validityNote: { fontSize: theme.fontSize.caption, color: theme.color.mutedText, textAlign: 'center', paddingHorizontal: 12 },
 });

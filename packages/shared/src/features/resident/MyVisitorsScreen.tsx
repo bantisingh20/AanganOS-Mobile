@@ -14,7 +14,7 @@ import { DEFAULT_PAGE_SIZE } from '../../models/query';
 import type { PagedData } from '../../models/envelope';
 import type { VisitPass } from '../../models/gate';
 import type { ResourceClients } from '../../resources';
-import { gateStatusTone, humanizeCode } from '../shared/status';
+import { gateStatusTone, humanizeCode, effectiveVisitPassStatus, isVisitPassExpired } from '../shared/status';
 
 export interface MyVisitorsScreenProps {
   resources: ResourceClients;
@@ -41,30 +41,36 @@ export function MyVisitorsScreen({ resources, onBack }: MyVisitorsScreenProps) {
 
   if (view.name === 'detail') {
     const p = view.pass;
+    const expired = isVisitPassExpired(p.status, p.validUntilUtc);
+    const effStatus = effectiveVisitPassStatus(p.status, p.validUntilUtc);
     return (
       <FormScreen title={p.visitorName} subtitle="Visit pass" onBack={() => setView({ name: 'list' })}>
-        <FormSection title="Scan at the gate" subtitle="The guard scans this QR to verify the pass" icon="qr-code" tint={theme.color.success}>
-          <View style={styles.qrWrap}>
-            <QrCode value={p.qrToken} size={220} />
-          </View>
-        </FormSection>
+        {expired ? null : (
+          <FormSection title="Scan at the gate" subtitle="The guard scans this QR to verify the pass" icon="qr-code" tint={theme.color.success}>
+            <View style={styles.qrWrap}>
+              <QrCode value={p.qrToken} size={220} />
+            </View>
+          </FormSection>
+        )}
         <FormSection title="Pass details" icon="document-text" tint={theme.color.info}>
           <ListRow title="Visitor" subtitle={p.visitorName} />
           {p.whomToMeet ? <ListRow title="To meet" subtitle={p.whomToMeet} /> : null}
           {p.phone ? <ListRow title="Phone" subtitle={p.phone} /> : null}
           {p.vehicleType ? <ListRow title="Vehicle" subtitle={`${humanizeCode(p.vehicleType)}${p.vehicleNumber ? ` · ${p.vehicleNumber}` : ''}`} /> : null}
           <ListRow title="Persons" subtitle={`${p.numberOfPersons ?? 1}`} />
-          <ListRow title="QR token" subtitle={p.qrToken} />
+          {expired ? null : <ListRow title="QR token" subtitle={p.qrToken} />}
           <ListRow title="Entries used" subtitle={`${p.useCount} of ${p.maxUses}`} />
           {p.visitDateUtc ? <ListRow title="Visit date" subtitle={formatDate(p.visitDateUtc)} /> : null}
           <ListRow title="Valid until" subtitle={formatDateTime(p.validUntilUtc)} />
-          <ListRow title="Status" subtitle={humanizeCode(p.status)} />
+          <ListRow title="Status" subtitle={humanizeCode(effStatus)} />
         </FormSection>
-        <AppButton
-          title="Share with visitor"
-          onPress={() => void sharePass(p)}
-          accessibilityHint="Open the share sheet to send the pass details"
-        />
+        {expired ? null : (
+          <AppButton
+            title="Share with visitor"
+            onPress={() => void sharePass(p)}
+            accessibilityHint="Open the share sheet to send the pass details"
+          />
+        )}
       </FormScreen>
     );
   }
@@ -86,6 +92,8 @@ export function MyVisitorsScreen({ resources, onBack }: MyVisitorsScreenProps) {
       >
         <View style={styles.list}>
           {items.map((p) => {
+            const effStatus = effectiveVisitPassStatus(p.status, p.validUntilUtc);
+            const expired = effStatus === 'expired';
             const meta: MetaChip[] = [];
             if (p.visitDateUtc) meta.push({ icon: 'calendar-outline', label: formatDate(p.visitDateUtc) });
             meta.push({ icon: 'ticket-outline', label: `${p.useCount}/${p.maxUses} used` });
@@ -96,19 +104,21 @@ export function MyVisitorsScreen({ resources, onBack }: MyVisitorsScreenProps) {
                 title={p.visitorName}
                 icon="person"
                 tint={theme.color.primary}
-                badge={{ label: humanizeCode(p.status), tone: gateStatusTone(p.status) }}
+                badge={{ label: humanizeCode(effStatus), tone: gateStatusTone(effStatus) }}
                 meta={meta}
               >
-                <View style={styles.actions}>
-                  <View style={styles.flex}>
-                    <AppButton
-                      title="Show QR"
-                      variant="secondary"
-                      onPress={() => setView({ name: 'detail', pass: p })}
-                      accessibilityHint={`Show the QR pass for ${p.visitorName}`}
-                    />
+                {expired ? null : (
+                  <View style={styles.actions}>
+                    <View style={styles.flex}>
+                      <AppButton
+                        title="Show QR"
+                        variant="secondary"
+                        onPress={() => setView({ name: 'detail', pass: p })}
+                        accessibilityHint={`Show the QR pass for ${p.visitorName}`}
+                      />
+                    </View>
                   </View>
-                </View>
+                )}
               </EntityCard>
             );
           })}

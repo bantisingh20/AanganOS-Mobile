@@ -33,6 +33,8 @@ export interface VisitorListFilters {
 
 /** Extra server-side filters for the recurring-visitor list (Req 25.2). */
 export interface RecurringVisitorListFilters {
+  /** true = currently active (status active + not past end date); false = revoked or expired. */
+  readonly active?: boolean;
   readonly status?: string;
   readonly category?: string;
   readonly hostUnitId?: string;
@@ -95,6 +97,7 @@ export interface CreateRecurringVisitorBody {
   readonly endDate: string;
   readonly dailyStartMinutes?: number;
   readonly dailyEndMinutes?: number;
+  readonly photoFileId?: string;
 }
 
 /** Identifies WHICH authorization admitted an entry/exit — exactly one id is set (Req 25.3). */
@@ -283,6 +286,14 @@ export class GateClient {
     });
   }
 
+  /** Extend a recurring visitor's validity to a new end date (reactivates it). */
+  extendRecurringVisitor(id: string, endDate: string): Promise<RecurringVisitor> {
+    return this.api.post<RecurringVisitor>(`/api/v1/recurring-visitors/${id}/extend`, {
+      body: { endDate },
+      idempotencyKey: this.idempotencyKey(),
+    });
+  }
+
   listRecurringVisitors(
     query: ListQuery = {},
     filters: RecurringVisitorListFilters = {},
@@ -293,6 +304,7 @@ export class GateClient {
       status: filters.status,
       category: filters.category,
       hostUnitId: filters.hostUnitId,
+      active: filters.active,
     });
     return this.api.get<PagedData<RecurringVisitor>>(`/api/v1/recurring-visitors${qs}`, options);
   }

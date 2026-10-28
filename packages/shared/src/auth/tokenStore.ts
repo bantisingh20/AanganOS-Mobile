@@ -207,6 +207,9 @@ export class SecureTokenStore {
   }
 
   async setFromLogin(login: LoginResponse, sessionToken?: string): Promise<void> {
+    if (login.user?.name && login.user.name.trim().length > 0) {
+      this.setDisplayName(login.user.name);
+    }
     this.accessToken = login.accessToken;
     this.accessTokenExpiresAtUtc = login.expiresAtUtc;
     this.roles = [...login.roles];

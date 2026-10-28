@@ -215,7 +215,6 @@ export function RegisterScreen({ resources, onBack, logo, mode = 'register', onK
     const backBase64 = idBack ? await toDataUrl(idBack) : undefined;
     if (isKyc) {
       await resources.residents.submitKyc({
-        ...(residentType ? { residentType } : {}),
         ...(dob ? { dateOfBirth: dob.toISOString().slice(0, 10) } : {}),
         ...(gender ? { gender } : {}),
         ...(moveInDate ? { moveInDate: moveInDate.toISOString().slice(0, 10) } : {}),

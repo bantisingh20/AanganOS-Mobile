@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, ImageBackground, Pressable, ScrollView, StyleSheet, Text, View, type ImageSourcePropType } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { TopBar } from '../ui/TopBar';
 import { BottomTabBar, type TabKey } from '../ui/BottomTabBar';
@@ -10,6 +10,7 @@ import type { Visitor } from '../models/gate';
 import { VisitorStatus } from '../models/gate';
 import type { Parcel } from '../models/parcel';
 import { ParcelStatus } from '../models/parcel';
+import type { Announcement } from '../models/announcement';
 import { useNavStack } from '../ui/navStack';
 import { useAuth } from '../auth/AuthContext';
 import { PermissionAction } from '../auth/permissions';
@@ -30,6 +31,7 @@ import { SecurityStaffListScreen } from './admin/SecurityStaffListScreen';
 import { AnnouncementAdminScreen } from './admin/AnnouncementAdminScreen';
 import { MyHouseholdScreen } from './resident/MyHouseholdScreen';
 import { MyProfileScreen } from './resident/MyProfileScreen';
+import { MyKycProfileScreen } from './resident/MyKycProfileScreen';
 import { RegisterScreen } from './resident/RegisterScreen';
 import { CommunicationPreferencesScreen } from './resident/CommunicationPreferencesScreen';
 import { InviteVisitorScreen } from './resident/InviteVisitorScreen';
@@ -67,6 +69,8 @@ export interface HomeNavigatorProps {
   isAdmin?: boolean;
   /** Shown as the home heading / app name fallback. */
   appTitle: string;
+  /** Optional app logo, shown in the home hero next to the brand name. */
+  logo?: ImageSourcePropType;
   /** Optional offline write queue (guard) for the gate entry/exit screen (Task 17.1). */
   offlineQueue?: GateOfflineQueue;
 }
@@ -79,7 +83,7 @@ export interface HomeNavigatorProps {
  * correct thing. Everything is styled from the shared {@link theme}, so a global colour change flows
  * through the whole shell.
  */
-export function HomeNavigator({ resources, isAdmin = false, appTitle, offlineQueue }: HomeNavigatorProps) {
+export function HomeNavigator({ resources, isAdmin = false, appTitle, logo, offlineQueue }: HomeNavigatorProps) {
   const { displayName, roles, hasPermission } = useAuth();
   const canVehicleLookup = hasPermission(PermissionAction.View, 'Vehicle');
   // Feature visibility is driven by the signed-in ROLES (merged app): a login sees resident, guard
@@ -121,6 +125,11 @@ export function HomeNavigator({ resources, isAdmin = false, appTitle, offlineQue
   // resident, guard and admin uniformly; a superadmin has no resident row (me.resident == null) →
   // fall back to the login identifier.
   const isResidentPrincipal = isResident && !isAdminRole && !isSecurity;
+  // KYC verification applies to residents AND admin-added guards (Security), but never to
+  // admins/superadmins. A guard is created as `draft` by the admin and must complete KYC on first
+  // login, same as a resident. A superadmin has no resident row, so the `resident` null-check below
+  // keeps them out of the gate regardless.
+  const isVerifiablePrincipal = (isResidentPrincipal || isSecurity) && !isAdminRole;
   const meQuery = useAsync(
     (signal) => resources.residents.me({ signal }).catch(() => null),
     [resources],
@@ -130,7 +139,7 @@ export function HomeNavigator({ resources, isAdmin = false, appTitle, offlineQue
 
   const myVerificationStatus = meQuery.data?.resident?.verificationStatus;
   const isPendingResident =
-    isResidentPrincipal &&
+    isVerifiablePrincipal &&
     !!meQuery.data?.resident &&
     myVerificationStatus !== 'verified';
 
@@ -244,6 +253,8 @@ export function HomeNavigator({ resources, isAdmin = false, appTitle, offlineQue
       return <MyHouseholdScreen resources={resources} onBack={back} />;
     case 'myProfile':
       return <MyProfileScreen resources={resources} onBack={back} />;
+    case 'myKyc':
+      return <MyKycProfileScreen resources={resources} onBack={back} />;
     case 'commPrefs':
       return <CommunicationPreferencesScreen resources={resources} onBack={back} />;
     case 'lookup':
@@ -315,12 +326,14 @@ export function HomeNavigator({ resources, isAdmin = false, appTitle, offlineQue
       const tab: TabKey = route.name === 'tabs' ? route.tab : 'home';
       return (
         <View style={styles.shell}>
-          <TopBar
-            title={tab === 'services' ? 'Services' : societyName}
-            subtitle={tab === 'services' ? 'Community & Unit Directory' : userName}
-            notificationCount={unreadCount}
-            onPressNotifications={() => go({ name: 'notifications' })}
-          />
+          {tab === 'home' ? null : (
+            <TopBar
+              title={tab === 'services' ? 'Services' : societyName}
+              subtitle={tab === 'services' ? 'Community & Unit Directory' : userName}
+              notificationCount={unreadCount}
+              onPressNotifications={() => go({ name: 'notifications' })}
+            />
+          )}
           <View style={styles.body}>
             {tab === 'home' ? (
               <DashboardTab
@@ -331,6 +344,7 @@ export function HomeNavigator({ resources, isAdmin = false, appTitle, offlineQue
                 isSecurity={isSecurity}
                 userName={userName}
                 societyName={societyName}
+                {...(logo ? { logo } : {})}
                 unitLabel={meQuery.data?.units?.[0]?.unitNumber ?? null}
                 unreadCount={unreadCount}
                 onNavigate={go}
@@ -349,7 +363,8 @@ export function HomeNavigator({ resources, isAdmin = false, appTitle, offlineQue
                 isAdmin={isAdminRole}
                 isSecurity={isSecurity}
                 onOpenNotifications={() => go({ name: 'notifications' })}
-                {...(isResidentPrincipal ? { onManageProfile: () => go({ name: 'myProfile' }) } : {})}
+                onOpenSupport={() => go({ name: 'raiseTicket' })}
+                {...(isResidentPrincipal || isSecurity ? { onManageProfile: () => go({ name: 'myKyc' }) } : {})}
               />
             )}
           </View>
@@ -459,6 +474,7 @@ type Route =
   | { name: 'announcementsAdmin' }
   | { name: 'myHousehold' }
   | { name: 'myProfile' }
+  | { name: 'myKyc' }
   | { name: 'kyc' }
   | { name: 'commPrefs' }
   | { name: 'lookup' }
@@ -601,6 +617,9 @@ interface QuickAction {
   tint: string;
 }
 
+const RECENT_NOTICE_DAYS = 15;
+const DASH_HERO_URI = 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=900&q=70';
+
 /** A friendly, time-of-day greeting. */
 function greeting(): string {
   const h = new Date().getHours();
@@ -634,6 +653,7 @@ function DashboardTab({
   societyName,
   unitLabel,
   unreadCount,
+  logo,
   onNavigate,
   onOpenServices,
   onOpenNotifications,
@@ -648,6 +668,7 @@ function DashboardTab({
   societyName: string;
   unitLabel: string | null;
   unreadCount: number;
+  logo?: ImageSourcePropType;
   onNavigate: (r: Route) => void;
   onOpenServices: () => void;
   onOpenNotifications: () => void;
@@ -691,6 +712,27 @@ function DashboardTab({
     [resources, isSecurity, routeKey],
   );
 
+  const openTickets = useAsync(
+    (signal) => (isResident ? resources.helpdesk.listTickets({ pageSize: 1 }, { status: 'new' }, { signal }).catch(() => emptyPage()) : Promise.resolve(emptyPage())),
+    [resources, isResident, routeKey],
+  );
+  const inProgressTickets = useAsync(
+    (signal) => (isResident ? resources.helpdesk.listTickets({ pageSize: 1 }, { status: 'in_progress' }, { signal }).catch(() => emptyPage()) : Promise.resolve(emptyPage())),
+    [resources, isResident, routeKey],
+  );
+  const resolvedTickets = useAsync(
+    (signal) => (isResident ? resources.helpdesk.listTickets({ pageSize: 1 }, { status: 'resolved' }, { signal }).catch(() => emptyPage()) : Promise.resolve(emptyPage())),
+    [resources, isResident, routeKey],
+  );
+  const recentNotices = useAsync<PagedData<Announcement>>(
+    (signal) => {
+      const fromDate = new Date(Date.now() - RECENT_NOTICE_DAYS * 24 * 60 * 60 * 1000).toISOString();
+      return resources.announcements.list({ pageSize: 3, sort: 'publishedAtUtc:desc' }, { fromDate }, { signal }).catch(() => emptyPage<Announcement>());
+    },
+    [resources, routeKey],
+  );
+  const recentNoticeItems = recentNotices.data?.items ?? [];
+
   const approvedNeedingCheckIn = useMemo(() => {
     if (!isSecurity) return 0;
     const checkedInIds = new Set<string>();
@@ -732,6 +774,7 @@ function DashboardTab({
     const resident: DashTile[] = [
       { route: { name: 'inviteVisitor' }, label: 'Visitors', icon: 'person-add', tint: theme.color.primary },
       { route: { name: 'myVisitors' }, label: 'My Visitors', icon: 'people', tint: '#8250df' },
+      { route: { name: 'walkInApprovals' }, label: 'Approvals', icon: 'checkmark-done-circle', tint: '#16a34a' },
       { route: { name: 'announcements' }, label: 'Notices', icon: 'megaphone', tint: '#0ea5e9' },
       { route: { name: 'raiseTicket' }, label: 'Help Desk', icon: 'chatbubble-ellipses', tint: '#16a34a' },
       { route: { name: 'myParcels' }, label: 'Parcels', icon: 'cube', tint: '#d97706' },
@@ -761,53 +804,47 @@ function DashboardTab({
 
   return (
     <ScrollView contentContainerStyle={styles.dashScroll} showsVerticalScrollIndicator={false}>
-      {/* Emerald gradient hero header card */}
-      <View style={[styles.dashHeader, { paddingTop: theme.spacing.lg }]}>
-        <View style={styles.dashHeaderBlobA} />
-        <View style={styles.dashHeaderBlobB} />
-
-        {/* SOS is a guard gate operation (needs Create SosAlert) — only security can raise it, so the
-            top row only appears for security. Brand + notifications now live in the shared TopBar. */}
-        {isSecurity ? (
-          <View style={styles.dashHeaderTop}>
-            <View style={styles.dashHeaderIcons}>
-              <Pressable
-                onPress={() => onNavigate({ name: 'sos' })}
-                accessibilityRole="button"
-                accessibilityLabel="SOS emergency"
-                hitSlop={8}
-                style={styles.dashIconBtn}
-              >
-                <Text style={styles.dashSosText}>SOS</Text>
+      <ImageBackground source={{ uri: DASH_HERO_URI }} style={styles.heroBg} imageStyle={styles.heroBgImg}>
+        <View style={styles.heroScrim} />
+        <View style={[styles.heroInner, { paddingTop: theme.spacing.xl }]}>
+          <View style={styles.heroTopRow}>
+            <View style={styles.heroBrandRow}>
+              {logo ? <Image source={logo} style={styles.heroLogo} resizeMode="contain" accessibilityLabel="AanganOS" /> : null}
+              <Text style={styles.heroBrand}>
+                <Text style={styles.heroBrandDark}>Aangan</Text>
+                <Text style={styles.heroBrandGreen}>OS</Text>
+              </Text>
+            </View>
+            <View style={styles.heroTopIcons}>
+              {isSecurity ? (
+                <Pressable onPress={() => onNavigate({ name: 'sos' })} accessibilityRole="button" accessibilityLabel="SOS emergency" hitSlop={8} style={styles.heroSos}>
+                  <Text style={styles.heroSosText}>SOS</Text>
+                </Pressable>
+              ) : null}
+              <Pressable onPress={onOpenNotifications} accessibilityRole="button" accessibilityLabel="Notifications" hitSlop={8} style={styles.heroIconBtn}>
+                <Ionicons name="notifications-outline" size={20} color={theme.color.text} />
+                {unreadCount > 0 ? <View style={styles.heroBadge} /> : null}
+              </Pressable>
+              <Pressable onPress={onOpenProfile} accessibilityRole="button" accessibilityLabel="Open profile" hitSlop={8} style={styles.heroAvatar}>
+                <Text style={styles.heroAvatarText}>{initialsOf(userName)}</Text>
               </Pressable>
             </View>
           </View>
-        ) : null}
 
-        <Pressable style={styles.dashProfileRow} onPress={onOpenProfile} accessibilityRole="button" accessibilityLabel="Open profile">
-          <View style={styles.dashAvatar}>
-            <Text style={styles.dashInitials}>{initialsOf(userName)}</Text>
+          <View style={styles.heroGreetBlock}>
+            <Text style={styles.heroGreeting}>{greeting()},</Text>
+            <Text style={styles.dashHeroName} numberOfLines={1}>{userName}</Text>
+            <Text style={styles.heroUnit} numberOfLines={1}>{unitLabel ? `${unitLabel}, ` : ''}{societyName}</Text>
           </View>
-          <View style={styles.dashProfileText}>
-            <Text style={styles.dashGreeting}>{greeting()},</Text>
-            <Text style={styles.dashName} numberOfLines={1}>{userName}</Text>
-            <View style={styles.dashUnitRow}>
-              <Ionicons name="location-outline" size={12} color="rgba(255,255,255,0.85)" />
-              <Text style={styles.dashUnit} numberOfLines={1}>
-                {unitLabel ? `${unitLabel} • ` : ''}{societyName}
-              </Text>
+
+          {showPersonal ? (
+            <View style={styles.dashTabs}>
+              <DashTab label="Community" active={segment === 'community'} onPress={() => setSegment('community')} />
+              <DashTab label="Personal" active={segment === 'personal'} onPress={() => setSegment('personal')} />
             </View>
-          </View>
-        </Pressable>
-
-        {/* Community / Personal segmented tabs (inside the header card). */}
-        {showPersonal ? (
-          <View style={styles.dashTabs}>
-            <DashTab label="Community" active={segment === 'community'} onPress={() => setSegment('community')} />
-            <DashTab label="Personal" active={segment === 'personal'} onPress={() => setSegment('personal')} />
-          </View>
-        ) : null}
-      </View>
+          ) : null}
+        </View>
+      </ImageBackground>
 
       {attentionRows.length > 0 ? (
         <View style={styles.attentionBlock}>
@@ -846,7 +883,87 @@ function DashboardTab({
         ))}
       </View>
 
+      {isResident && segment === 'community' ? (
+        <Pressable
+          onPress={() => onNavigate({ name: 'myTickets' })}
+          accessibilityRole="button"
+          accessibilityLabel="My requests"
+          style={({ pressed }) => [styles.reqCard, pressed ? styles.dashTilePressed : null]}
+        >
+          <View style={styles.reqHead}>
+            <View style={styles.reqHeadLeft}>
+              <View style={[styles.reqHeadIcon, { backgroundColor: `${theme.color.primary}1a` }]}>
+                <Ionicons name="construct" size={16} color={theme.color.primary} />
+              </View>
+              <Text style={styles.reqTitle}>My Requests</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={theme.color.mutedText} />
+          </View>
+          <View style={styles.reqStats}>
+            <ReqStat value={openTickets.data?.totalCount ?? 0} label="Open" tint={theme.color.info} />
+            <View style={styles.reqDivider} />
+            <ReqStat value={inProgressTickets.data?.totalCount ?? 0} label="In Progress" tint="#d97706" />
+            <View style={styles.reqDivider} />
+            <ReqStat value={resolvedTickets.data?.totalCount ?? 0} label="Completed" tint={theme.color.primary} />
+          </View>
+        </Pressable>
+      ) : null}
+
+      <View style={styles.noticeHead}>
+        <Text style={styles.noticeHeading}>Recent Notices</Text>
+        <Pressable onPress={() => onNavigate({ name: 'announcements' })} hitSlop={6} accessibilityRole="button" accessibilityLabel="View all notices">
+          <Text style={styles.noticeViewAll}>View All ›</Text>
+        </Pressable>
+      </View>
+      <View style={styles.noticeCard}>
+        {recentNoticeItems.length === 0 ? (
+          <Text style={styles.noticeEmpty}>{recentNotices.loading ? 'Loading…' : `No notices in the last ${RECENT_NOTICE_DAYS} days.`}</Text>
+        ) : (
+          recentNoticeItems.map((n, i) => (
+            <NoticeRow key={n.id} notice={n} first={i === 0} onPress={() => onNavigate({ name: 'announcements' })} />
+          ))
+        )}
+      </View>
+
     </ScrollView>
+  );
+}
+
+/** One stat in the "My Requests" card. */
+function ReqStat({ value, label, tint }: { value: number; label: string; tint: string }) {
+  return (
+    <View style={styles.reqStat}>
+      <Text style={[styles.reqStatValue, { color: tint }]}>{value}</Text>
+      <Text style={styles.reqStatLabel}>{label}</Text>
+    </View>
+  );
+}
+
+const NOTICE_TINTS: Record<string, { icon: keyof typeof Ionicons.glyphMap; tint: string }> = {
+  maintenance: { icon: 'construct', tint: theme.color.primary },
+  event: { icon: 'calendar', tint: theme.color.info },
+  emergency: { icon: 'warning', tint: theme.color.danger },
+  general: { icon: 'megaphone', tint: '#0ea5e9' },
+};
+
+/** One notice row in the Recent Notices card. */
+function NoticeRow({ notice, first, onPress }: { notice: Announcement; first: boolean; onPress: () => void }) {
+  const meta = NOTICE_TINTS[notice.category] ?? NOTICE_TINTS.general!;
+  const date = new Date(notice.publishedAtUtc);
+  const dateLabel = Number.isNaN(date.getTime())
+    ? ''
+    : date.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={notice.title} style={({ pressed }) => [styles.noticeRow, first ? null : styles.noticeRowDivider, pressed ? styles.attentionRowPressed : null]}>
+      <View style={[styles.noticeIcon, { backgroundColor: `${meta.tint}1a` }]}>
+        <Ionicons name={meta.icon} size={18} color={meta.tint} />
+      </View>
+      <View style={styles.noticeText}>
+        <Text style={styles.noticeTitle} numberOfLines={1}>{notice.title}</Text>
+        <Text style={styles.noticeBody} numberOfLines={2}>{notice.body}</Text>
+      </View>
+      {dateLabel ? <Text style={styles.noticeDate}>{dateLabel}</Text> : null}
+    </Pressable>
   );
 }
 
@@ -1060,6 +1177,7 @@ function ProfileTab({
   isSecurity,
   onManageProfile,
   onOpenNotifications,
+  onOpenSupport,
 }: {
   userName: string;
   appTitle: string;
@@ -1069,6 +1187,7 @@ function ProfileTab({
   isSecurity: boolean;
   onManageProfile?: () => void;
   onOpenNotifications?: () => void;
+  onOpenSupport?: () => void;
 }) {
   const roleLabel = roles.length > 0 ? roles.join(', ') : appTitle;
   const ident = roleIdentity(isAdmin, isSecurity);
@@ -1104,7 +1223,7 @@ function ProfileTab({
       </ProfileSection>
 
       <ProfileSection title="Support & Legal" hint="Get help or learn more">
-        <ProfileNavRow icon="help-buoy-outline" tint={theme.color.info} title="Help & Support" subtitle="Get help with your account" onPress={() => {}} first />
+        <ProfileNavRow icon="help-buoy-outline" tint={theme.color.info} title="Help & Support" subtitle="Raise a ticket for help" onPress={onOpenSupport ?? (() => {})} first />
         <ProfileNavRow icon="document-text-outline" tint={theme.color.mutedText} title="Terms & Privacy" subtitle="Legal information" onPress={() => {}} last />
       </ProfileSection>
 
@@ -1198,7 +1317,29 @@ const styles = StyleSheet.create({
   sectionRow: { marginTop: theme.spacing.sm },
   actionList: { gap: theme.spacing.md },
   // --- Dashboard (society-app, reference image 1) ---
-  dashScroll: { padding: theme.spacing.lg, gap: theme.spacing.lg, paddingBottom: theme.spacing.xxl },
+  dashScroll: { paddingHorizontal: theme.spacing.lg, gap: theme.spacing.lg, paddingBottom: theme.spacing.xxl },
+
+  heroBg: { marginHorizontal: -theme.spacing.lg, minHeight: 220, justifyContent: 'flex-end' },
+  heroBgImg: { },
+  heroScrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(8,24,18,0.42)' },
+  heroInner: { paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.lg, gap: theme.spacing.md },
+  heroTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  heroBrandRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
+  heroLogo: { width: 32, height: 32, borderRadius: theme.radius.sm },
+  heroBrand: { fontSize: theme.fontSize.title, fontWeight: '800', letterSpacing: -0.5 },
+  heroBrandDark: { color: '#fff' },
+  heroBrandGreen: { color: '#8ef0c0' },
+  heroTopIcons: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
+  heroSos: { paddingHorizontal: 10, height: 34, borderRadius: 17, backgroundColor: theme.color.danger, alignItems: 'center', justifyContent: 'center' },
+  heroSosText: { color: '#fff', fontSize: 11, fontWeight: '900', letterSpacing: 0.5 },
+  heroIconBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.92)', alignItems: 'center', justifyContent: 'center' },
+  heroBadge: { position: 'absolute', top: 7, right: 8, width: 9, height: 9, borderRadius: 5, backgroundColor: theme.color.danger, borderWidth: 1.5, borderColor: '#fff' },
+  heroAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.92)', alignItems: 'center', justifyContent: 'center' },
+  heroAvatarText: { color: theme.color.primary, fontSize: theme.fontSize.label, fontWeight: '800' },
+  heroGreetBlock: { gap: 2 },
+  heroGreeting: { color: 'rgba(255,255,255,0.9)', fontSize: theme.fontSize.body, fontWeight: '600' },
+  dashHeroName: { color: '#fff', fontSize: theme.fontSize.heading, fontWeight: '800' },
+  heroUnit: { color: 'rgba(255,255,255,0.85)', fontSize: theme.fontSize.label, fontWeight: '600' },
   pendingBanner: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -1290,22 +1431,16 @@ const styles = StyleSheet.create({
   dashTabActive: { backgroundColor: '#fff' },
   dashTabText: { color: 'rgba(255,255,255,0.9)', fontSize: theme.fontSize.label, fontWeight: '700' },
   dashTabTextActive: { color: theme.color.primary },
-  dashGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: theme.spacing.md },
-  dashTile: {
-    width: '48.2%',
-    backgroundColor: theme.color.surface,
-    borderRadius: theme.radius.lg,
-    paddingVertical: theme.spacing.lg,
-    paddingHorizontal: theme.spacing.md,
-    alignItems: 'center',
-    gap: theme.spacing.sm,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
+  dashGrid: {
+    flexDirection: 'row', flexWrap: 'wrap', rowGap: theme.spacing.lg,
+    backgroundColor: theme.color.surface, borderRadius: theme.radius.xl,
+    paddingVertical: theme.spacing.lg, paddingHorizontal: theme.spacing.sm,
     ...theme.shadow.soft,
   },
-  dashTilePressed: { opacity: 0.85, transform: [{ scale: 0.98 }] },
-  dashTileIcon: { width: 56, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  dashTileLabel: { fontSize: theme.fontSize.label, fontWeight: '700', color: theme.color.text, textAlign: 'center' },
+  dashTile: { width: '25%', alignItems: 'center', gap: 6, paddingHorizontal: 2 },
+  dashTilePressed: { opacity: 0.6 },
+  dashTileIcon: { width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  dashTileLabel: { fontSize: theme.fontSize.caption, fontWeight: '600', color: theme.color.text, textAlign: 'center', lineHeight: 14 },
   attentionBlock: { marginBottom: theme.spacing.md, gap: theme.spacing.sm },
   attentionHeading: { fontSize: theme.fontSize.label, fontWeight: '800', color: theme.color.text, textTransform: 'uppercase', letterSpacing: 0.4 },
   attentionCard: {
@@ -1321,6 +1456,31 @@ const styles = StyleSheet.create({
   attentionRowLabel: { flex: 1, fontSize: theme.fontSize.body, fontWeight: '700', color: theme.color.text },
   attentionRowCount: { minWidth: 24, height: 24, borderRadius: 12, paddingHorizontal: 7, alignItems: 'center', justifyContent: 'center' },
   attentionRowCountText: { color: '#fff', fontSize: theme.fontSize.caption, fontWeight: '800' },
+
+  reqCard: { backgroundColor: theme.color.surface, borderRadius: theme.radius.lg, padding: theme.spacing.md, marginBottom: theme.spacing.md, gap: theme.spacing.sm, ...theme.shadow.soft },
+  reqHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  reqHeadLeft: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
+  reqHeadIcon: { width: 30, height: 30, borderRadius: theme.radius.md, alignItems: 'center', justifyContent: 'center' },
+  reqTitle: { fontSize: theme.fontSize.body, fontWeight: '800', color: theme.color.text },
+  reqStats: { flexDirection: 'row', alignItems: 'center' },
+  reqStat: { flex: 1, alignItems: 'center', gap: 2 },
+  reqStatValue: { fontSize: theme.fontSize.title, fontWeight: '800' },
+  reqStatLabel: { fontSize: theme.fontSize.caption, color: theme.color.mutedText, fontWeight: '600' },
+  reqDivider: { width: StyleSheet.hairlineWidth, alignSelf: 'stretch', backgroundColor: theme.color.border, marginVertical: 4 },
+
+  noticeHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.spacing.sm },
+  noticeHeading: { fontSize: theme.fontSize.body, fontWeight: '800', color: theme.color.text },
+  noticeViewAll: { fontSize: theme.fontSize.label, fontWeight: '700', color: theme.color.primary },
+  noticeCard: { backgroundColor: theme.color.surface, borderRadius: theme.radius.lg, ...theme.shadow.soft },
+  noticeEmpty: { padding: theme.spacing.md, fontSize: theme.fontSize.label, color: theme.color.mutedText, textAlign: 'center' },
+  noticeRow: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.spacing.md, padding: theme.spacing.md },
+  noticeRowDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.color.border },
+  noticeIcon: { width: 40, height: 40, borderRadius: theme.radius.md, alignItems: 'center', justifyContent: 'center' },
+  noticeText: { flex: 1, gap: 2 },
+  noticeTitle: { fontSize: theme.fontSize.label, fontWeight: '800', color: theme.color.text },
+  noticeBody: { fontSize: theme.fontSize.caption, color: theme.color.mutedText, lineHeight: 17 },
+  noticeDate: { fontSize: theme.fontSize.caption, color: theme.color.mutedText, fontWeight: '600' },
+
   // 2-column quick-action grid: each tile is ~half width, wraps to the next row.
   quickGrid: {
     flexDirection: 'row',

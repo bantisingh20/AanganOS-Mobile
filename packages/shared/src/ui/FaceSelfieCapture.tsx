@@ -18,34 +18,42 @@ export interface FaceSelfieCaptureProps {
   onCancel?: () => void;
   /** Consecutive good frames required before auto-capture (stability gate). */
   stableFrames?: number;
+  /** Preferred camera to start with; falls back to the other if that one is missing. Default 'front'. */
+  initialFacing?: 'front' | 'back';
 }
 
 type Guidance = 'searching' | 'multiple' | 'tooSmall' | 'offCenter' | 'notStraight' | 'hold' | 'ready';
 
 const GUIDANCE_TEXT: Record<Guidance, string> = {
-  searching: 'Position your face in the circle',
+  searching: 'Position the face in the circle',
   multiple: 'Only one face should be visible',
   tooSmall: 'Move a little closer',
-  offCenter: 'Center your face in the circle',
+  offCenter: 'Center the face in the circle',
   notStraight: 'Look straight at the camera',
   hold: 'Hold still…',
   ready: 'Perfect — capturing',
 };
 
-const FACE_OPTIONS: FaceDetectionOptions = {
-  performanceMode: 'fast',
-  classificationMode: 'none',
-  landmarkMode: 'none',
-  contourMode: 'none',
-  cameraFacing: 'front',
-  minFaceSize: 0.15,
-};
-
-export function FaceSelfieCapture({ onCapture, onCancel, stableFrames = 5 }: FaceSelfieCaptureProps) {
+export function FaceSelfieCapture({ onCapture, onCancel, stableFrames = 5, initialFacing = 'front' }: FaceSelfieCaptureProps) {
   const { hasPermission, requestPermission } = useCameraPermission();
-  const device = useCameraDevice('front');
+  const [facing, setFacing] = useState<'front' | 'back'>(initialFacing);
+  const frontDevice = useCameraDevice('front');
+  const backDevice = useCameraDevice('back');
+  const preferred = facing === 'front' ? frontDevice : backDevice;
+  const fallback = facing === 'front' ? backDevice : frontDevice;
+  const device = preferred ?? fallback;
+  const activeFacing: 'front' | 'back' = preferred ? facing : (facing === 'front' ? 'back' : 'front');
+  const bothCameras = Boolean(frontDevice && backDevice);
   const camera = useRef<Camera>(null);
-  const { detectFaces } = useFaceDetector(FACE_OPTIONS);
+  const faceOptions: FaceDetectionOptions = {
+    performanceMode: 'fast',
+    classificationMode: 'none',
+    landmarkMode: 'none',
+    contourMode: 'none',
+    cameraFacing: activeFacing,
+    minFaceSize: 0.15,
+  };
+  const { detectFaces } = useFaceDetector(faceOptions);
 
   const [guidance, setGuidance] = useState<Guidance>('searching');
   const [capturing, setCapturing] = useState(false);
@@ -120,7 +128,7 @@ export function FaceSelfieCapture({ onCapture, onCancel, stableFrames = 5 }: Fac
     return (
       <View style={styles.center}>
         <Ionicons name="alert-circle-outline" size={40} color={theme.color.mutedText} />
-        <Text style={styles.msg}>No front camera available on this device.</Text>
+        <Text style={styles.msg}>No camera available on this device.</Text>
         {onCancel ? <Pressable onPress={onCancel} hitSlop={8}><Text style={styles.cancel}>Cancel</Text></Pressable> : null}
       </View>
     );
@@ -141,6 +149,18 @@ export function FaceSelfieCapture({ onCapture, onCancel, stableFrames = 5 }: Fac
         />
       </View>
       <Text style={[styles.guidance, ready ? styles.guidanceReady : null]}>{GUIDANCE_TEXT[guidance]}</Text>
+      {bothCameras ? (
+        <Pressable
+          onPress={() => { firedRef.current = false; goodCount.current = 0; setGuidance('searching'); setFacing((f) => (f === 'front' ? 'back' : 'front')); }}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Switch camera"
+          style={styles.flipRow}
+        >
+          <Ionicons name="camera-reverse-outline" size={18} color={theme.color.primary} />
+          <Text style={styles.flipText}>{activeFacing === 'front' ? 'Use back camera' : 'Use front camera'}</Text>
+        </Pressable>
+      ) : null}
       {capturing ? <ActivityIndicator color={theme.color.primary} style={styles.spinner} /> : null}
       {onCancel ? <Pressable onPress={onCancel} hitSlop={8} style={styles.cancelRow}><Text style={styles.cancel}>Cancel</Text></Pressable> : null}
     </View>
@@ -158,6 +178,8 @@ const styles = StyleSheet.create({
   guidance: { fontSize: theme.fontSize.label, color: theme.color.mutedText, fontWeight: '600', textAlign: 'center' },
   guidanceReady: { color: theme.color.primary, fontWeight: '800' },
   spinner: { marginTop: theme.spacing.xs },
+  flipRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: theme.spacing.xs },
+  flipText: { fontSize: theme.fontSize.label, color: theme.color.primary, fontWeight: '700' },
   cancelRow: { paddingVertical: theme.spacing.xs },
   cancel: { fontSize: theme.fontSize.label, color: theme.color.mutedText, fontWeight: '700' },
   center: { alignItems: 'center', gap: theme.spacing.md, padding: theme.spacing.lg },

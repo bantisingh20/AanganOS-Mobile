@@ -3,6 +3,10 @@ import type { LoginResponse } from '../models/auth';
 
 export interface OnboardingConfig {
   readonly selfRegistrationEnabled: boolean;
+  readonly visitPassValidityAmount: number;
+  readonly visitPassValidityUnit: string;
+  readonly visitPassValidityText: string;
+  readonly recurringExpiringSoonDays: number;
 }
 
 export interface PublicCommunity {

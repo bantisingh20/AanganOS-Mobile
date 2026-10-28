@@ -1,5 +1,6 @@
 export * from './MyHouseholdScreen';
 export * from './MyProfileScreen';
+export * from './MyKycProfileScreen';
 export * from './CommunicationPreferencesScreen';
 export * from './useMyResident';
 export * from './InviteVisitorScreen';

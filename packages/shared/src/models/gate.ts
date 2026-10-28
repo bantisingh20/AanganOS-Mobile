@@ -1,10 +1,3 @@
-/**
- * Phase 3 Gate / Security-Operations read models — mirror the backend `CommunityOS.Application.Gate`
- * DTOs 1:1 (Req 23.x, 24.x, 25.x, 26.x, 27.x). Read-only shapes the mobile gate screens list/view;
- * the write actions live on the resource clients. Every status/category is a configurable code
- * resolved from master-data (steering: no hardcoding) — the constants here are only the stable list
- * KEYS and the well-known status codes the UI branches on, never a closed universe.
- */
 
 /** Mirror of `VisitPassDto` (Req 23.1). The OTP is NEVER on this shape — only {@link CreateVisitPassResult} carries the one-time plaintext. */
 export interface VisitPass {
@@ -43,6 +36,8 @@ export interface Visitor {
   readonly id: string;
   readonly communityId: string;
   readonly hostUnitId: string;
+  /** The host unit's number (resolved server-side), or null if unavailable. */
+  readonly hostUnitNumber: string | null;
   readonly name: string;
   readonly phone: string | null;
   readonly email: string | null;
@@ -130,6 +125,7 @@ export interface RecurringVisitor {
   readonly dailyEndMinutes: number | null;
   /** Configurable status code (active/revoked). */
   readonly status: string;
+  readonly photoFileId: string | null;
 }
 
 /** Mirror of `EntryExitEventDto` (Req 25.3). `exitTsUtc` null while the visitor is still on-site (the open event). */
@@ -188,6 +184,7 @@ export const VisitorStatus = {
   Pending: 'pending',
   Approved: 'approved',
   Rejected: 'rejected',
+  Expired: 'expired',
 } as const;
 
 /** Well-known recurring-visitor status codes (mirror of `RecurringVisitorStatuses`). */
