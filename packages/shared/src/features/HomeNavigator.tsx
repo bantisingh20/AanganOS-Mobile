@@ -30,6 +30,7 @@ import { SecurityStaffListScreen } from './admin/SecurityStaffListScreen';
 import { AnnouncementAdminScreen } from './admin/AnnouncementAdminScreen';
 import { MyHouseholdScreen } from './resident/MyHouseholdScreen';
 import { MyProfileScreen } from './resident/MyProfileScreen';
+import { RegisterScreen } from './resident/RegisterScreen';
 import { CommunicationPreferencesScreen } from './resident/CommunicationPreferencesScreen';
 import { InviteVisitorScreen } from './resident/InviteVisitorScreen';
 import { MyVisitorsScreen } from './resident/MyVisitorsScreen';
@@ -145,6 +146,17 @@ export function HomeNavigator({ resources, isAdmin = false, appTitle, offlineQue
   // A restricted shell renders its own tiles + a banner; any drilled-in feature route falls through
   // to it, so a restricted feature is unreachable even with a stale route on the stack.
   if (isPendingResident) {
+    const canStartKyc = myVerificationStatus === 'draft' || myVerificationStatus === 'rejected';
+    if (route.name === 'kyc') {
+      return (
+        <RegisterScreen
+          resources={resources}
+          mode="kyc"
+          onBack={back}
+          onKycDone={() => { meQuery.reload(); go({ name: 'tabs', tab: 'home' }); }}
+        />
+      );
+    }
     const pendingBody =
       route.name === 'myProfile' ? (
         <MyProfileScreen resources={resources} onBack={back} />
@@ -159,6 +171,8 @@ export function HomeNavigator({ resources, isAdmin = false, appTitle, offlineQue
         userName={userName}
         societyName={societyName}
         unreadCount={unreadCount}
+        canStartKyc={canStartKyc}
+        onStartKyc={() => go({ name: 'kyc' })}
         onOpenProfile={() => go({ name: 'myProfile' })}
         onOpenHousehold={() => go({ name: 'myHousehold' })}
         onOpenNotifications={() => go({ name: 'notifications' })}
@@ -298,7 +312,7 @@ export function HomeNavigator({ resources, isAdmin = false, appTitle, offlineQue
       );
     case 'tabs':
     default: {
-      const tab = route.tab;
+      const tab: TabKey = route.name === 'tabs' ? route.tab : 'home';
       return (
         <View style={styles.shell}>
           <TopBar
@@ -350,6 +364,8 @@ function PendingResidentHome({
   userName,
   societyName,
   unreadCount,
+  canStartKyc,
+  onStartKyc,
   onOpenProfile,
   onOpenHousehold,
   onOpenNotifications,
@@ -357,6 +373,8 @@ function PendingResidentHome({
   userName: string;
   societyName: string;
   unreadCount: number;
+  canStartKyc: boolean;
+  onStartKyc: () => void;
   onOpenProfile: () => void;
   onOpenHousehold: () => void;
   onOpenNotifications: () => void;
@@ -378,12 +396,26 @@ function PendingResidentHome({
         <View style={styles.pendingBanner}>
           <Ionicons name="time-outline" size={22} color={theme.color.warning} />
           <View style={styles.pendingBannerText}>
-            <Text style={styles.pendingBannerTitle}>Registration pending approval</Text>
+            <Text style={styles.pendingBannerTitle}>{canStartKyc ? 'Complete your verification' : 'Verification pending approval'}</Text>
             <Text style={styles.pendingBannerSub}>
-              Your account is awaiting approval. You can view your profile and household in the meantime.
+              {canStartKyc
+                ? 'Submit your KYC details to unlock all community features.'
+                : 'Your details are under review. You can view your profile and household in the meantime.'}
             </Text>
           </View>
         </View>
+        {canStartKyc ? (
+          <Pressable
+            onPress={onStartKyc}
+            accessibilityRole="button"
+            accessibilityLabel="Complete verification"
+            style={({ pressed }) => [styles.kycCta, pressed ? styles.dashTilePressed : null]}
+          >
+            <Ionicons name="shield-checkmark" size={20} color={theme.color.primaryText} />
+            <Text style={styles.kycCtaText}>Complete Verification</Text>
+            <Ionicons name="arrow-forward" size={18} color={theme.color.primaryText} />
+          </Pressable>
+        ) : null}
         <View style={styles.dashGrid}>
           {tiles.map((t) => (
             <Pressable
@@ -427,6 +459,7 @@ type Route =
   | { name: 'announcementsAdmin' }
   | { name: 'myHousehold' }
   | { name: 'myProfile' }
+  | { name: 'kyc' }
   | { name: 'commPrefs' }
   | { name: 'lookup' }
   | { name: 'vehicleLookup' }
@@ -1179,6 +1212,11 @@ const styles = StyleSheet.create({
   pendingBannerText: { flex: 1, gap: 2 },
   pendingBannerTitle: { fontSize: theme.fontSize.body, fontWeight: '800', color: theme.color.text },
   pendingBannerSub: { fontSize: theme.fontSize.caption, color: theme.color.mutedText, lineHeight: 18 },
+  kycCta: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.spacing.sm,
+    minHeight: 54, borderRadius: theme.radius.lg, backgroundColor: theme.color.primary, paddingHorizontal: theme.spacing.lg,
+  },
+  kycCtaText: { color: theme.color.primaryText, fontSize: theme.fontSize.body, fontWeight: '800' },
   pendingLogout: { marginTop: theme.spacing.md },
   dashHeader: {
     backgroundColor: theme.color.primary,

@@ -1,18 +1,28 @@
 import React, { useMemo } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import * as SecureStore from 'expo-secure-store';
 import {
   AuthGate,
   AuthProvider,
   ErrorBoundary,
   HomeNavigator,
   ToastProvider,
+  expoSecureStorage,
   hasAdminRole,
+  initI18n,
+  restoreLanguage,
   useAuth,
   useMediaPermissions,
 } from '@communityos/shared';
 import { createAppCore } from './src/core';
 import type { AppCore } from './src/core';
+
+const welcomeStorage = expoSecureStorage(SecureStore);
+const appLogo = require('./assets/icon.png');
+// Initialize translations + restore the saved language before the UI renders.
+initI18n();
+void restoreLanguage(welcomeStorage);
 
 /**
  * Resident/Owner app shell. Builds the shared core once, wraps the app in the shared
@@ -35,7 +45,7 @@ export default function App() {
             onAuthenticated={core.onAuthenticated}
           >
             <StatusBar style="light" />
-            <AuthGate appTitle="Resident" auth={core.auth} resources={core.resources}>
+            <AuthGate appTitle="Resident" auth={core.auth} resources={core.resources} storage={welcomeStorage} welcomeLogo={appLogo}>
               <ResidentHome core={core} />
             </AuthGate>
           </AuthProvider>

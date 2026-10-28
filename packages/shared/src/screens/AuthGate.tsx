@@ -1,9 +1,10 @@
 import React from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, View, type ImageSourcePropType } from 'react-native';
 import { AuthNavigator } from './AuthNavigator';
 import { useAuth } from '../auth/AuthContext';
 import { theme } from '../ui/theme';
 import type { AuthService } from '../auth/authService';
+import type { SecureStorage } from '../auth/tokenStore';
 import type { ResourceClients } from '../resources';
 
 export interface AuthGateProps {
@@ -12,6 +13,11 @@ export interface AuthGateProps {
   auth: AuthService;
   /** Resource clients to enable anonymous self-registration in the auth flow. Omit to disable it. */
   resources?: ResourceClients;
+  /** Persistence for the one-time welcome screen. Omit to never show welcome. */
+  storage?: SecureStorage;
+  /** Brand logo + hero images for the welcome screen. */
+  welcomeLogo?: ImageSourcePropType;
+  welcomeHero?: ImageSourcePropType;
   /** The authenticated app (e.g. the app's home placeholder). Shown only when signed in. */
   children: React.ReactNode;
 }
@@ -25,7 +31,7 @@ export interface AuthGateProps {
  * flow automatically (the API client clears the session; logout updates the context). Must be
  * rendered inside an {@link AuthProvider}.
  */
-export function AuthGate({ appTitle, auth, resources, children }: AuthGateProps) {
+export function AuthGate({ appTitle, auth, resources, storage, welcomeLogo, welcomeHero, children }: AuthGateProps) {
   const { status } = useAuth();
 
   if (status === 'restoring') {
@@ -41,7 +47,16 @@ export function AuthGate({ appTitle, auth, resources, children }: AuthGateProps)
   }
 
   if (status === 'unauthenticated') {
-    return <AuthNavigator appTitle={appTitle} auth={auth} {...(resources ? { resources } : {})} />;
+    return (
+      <AuthNavigator
+        appTitle={appTitle}
+        auth={auth}
+        {...(resources ? { resources } : {})}
+        {...(storage ? { storage } : {})}
+        {...(welcomeLogo ? { welcomeLogo } : {})}
+        {...(welcomeHero ? { welcomeHero } : {})}
+      />
+    );
   }
 
   return <>{children}</>;

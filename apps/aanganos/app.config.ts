@@ -32,6 +32,14 @@ const config: ExpoConfig = {
   plugins: [
     'expo-secure-store',
     [
+      'expo-build-properties',
+      {
+        android: {
+          minSdkVersion: 26,
+        },
+      },
+    ],
+    [
       'onesignal-expo-plugin',
       {
         mode: 'production',
@@ -48,6 +56,13 @@ const config: ExpoConfig = {
       'expo-camera',
       {
         cameraPermission: 'Allow $(PRODUCT_NAME) to scan a visitor pass QR code at the gate.',
+      },
+    ],
+    [
+      'react-native-vision-camera',
+      {
+        cameraPermissionText: 'Allow $(PRODUCT_NAME) to use the camera for a verification selfie.',
+        enableCodeScanner: false,
       },
     ],
   ],

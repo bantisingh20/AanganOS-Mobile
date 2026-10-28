@@ -43,6 +43,18 @@ export interface CreateResidentBody {
   readonly photoFileId?: string;
 }
 
+/** The signed-in resident's own KYC submission (draft/rejected → pending). All fields optional. */
+export interface SubmitKycBody {
+  readonly residentType?: string;
+  readonly dateOfBirth?: string;
+  readonly gender?: string;
+  readonly moveInDate?: string;
+  readonly govtIdType?: string;
+  readonly selfieBase64?: string;
+  readonly govtIdFrontBase64?: string;
+  readonly govtIdBackBase64?: string;
+}
+
 /** Add a family/household member to a unit (Req 15.2). */
 export interface AddHouseholdBody {
   readonly unitId: string;
@@ -126,6 +138,14 @@ export class ResidentsClient {
    */
   me(options?: { signal?: AbortSignal }): Promise<ResidentMe> {
     return this.api.get<ResidentMe>('/api/v1/residents/me', options);
+  }
+
+  /** The signed-in resident submits their own KYC (selfie + ID + details); draft/rejected → pending. */
+  submitKyc(body: SubmitKycBody): Promise<Resident> {
+    return this.api.post<Resident>('/api/v1/residents/me/submit-kyc', {
+      body,
+      idempotencyKey: this.makeIdempotencyKey(),
+    });
   }
 
   /** Create a resident record (Req 15.1) — e.g. a new household/family member person. */

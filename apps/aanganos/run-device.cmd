@@ -7,6 +7,7 @@ set PKG=com.aanganos.app
 set APK=c:\Mobibox\Banti\CommunityOS-Mobile\apps\aanganos\android\app\build\outputs\apk\debug\app-debug.apk
 cd /d "c:\Mobibox\Banti\CommunityOS-Mobile\apps\aanganos\android"
 
+
 echo === Devices ===
 "%ADB%" devices
 
@@ -34,7 +35,11 @@ if errorlevel 1 (
   "%ADB%" shell monkey -p %PKG% -c android.intent.category.LAUNCHER 1
 )
 
+echo === Setting up adb reverse tunnels (Metro + API over USB) ===
+"%ADB%" reverse tcp:8081 tcp:8081
+"%ADB%" reverse tcp:5080 tcp:5080
+
 echo === Starting Metro (keep this window open) ===
 cd /d "c:\Mobibox\Banti\CommunityOS-Mobile\apps\aanganos"
-npx expo start --dev-client
+npx expo start --dev-client --port 8081
 endlocal

@@ -1,55 +1,62 @@
 import React, { useState } from 'react';
 import {
-  Image,
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
+  type ImageSourcePropType,
 } from 'react-native';
-import { AppTextField } from '../ui/AppTextField';
+import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
+import { BrandLogo } from '../ui/BrandLogo';
 import { PhoneField } from '../ui/PhoneField';
-import { AppButton } from '../ui/AppButton';
 import { FormBanner } from '../ui/FormBanner';
 import { LinkButton } from '../ui/LinkButton';
+import { LanguageSwitcher } from '../ui/LanguageSwitcher';
 import { theme } from '../ui/theme';
 import { useSafeInsets } from '../ui/safeInsets';
 import { toFormError, type FormErrorView } from '../api/formError';
 import { ApiRequestError } from '../api/errors';
 import { useAuth } from '../auth/AuthContext';
+import type { SecureStorage } from '../auth/tokenStore';
 
 export interface LoginScreenProps {
-  /** App name shown in the header, e.g. "Resident" / "Guard". */
   appTitle: string;
-  /** Navigate to the forgot-password screen. */
   onForgotPassword: () => void;
-  /** Navigate to the self-registration screen. Omit to hide the "Register" link. */
   onRegister?: () => void;
-  /** Optional content rendered above the form (e.g. a one-time "password reset" success notice). */
+  logo?: ImageSourcePropType;
+  storage?: SecureStorage;
   headerSlot?: React.ReactNode;
 }
 
 const NO_ERROR: FormErrorView = { message: '', fieldErrors: {} };
 
-// `__DEV__` is a React Native global: true in dev (Metro), false in a release bundle.
 declare const __DEV__: boolean;
 
-// DEV-ONLY login prefill to speed up local testing. In a RELEASE build (__DEV__ === false) the
-// fields start EMPTY — testers never see dev credentials or a prefilled form.
 const DEV_DEFAULT_IDENTIFIER = __DEV__ ? '+917984263575' : '';
 const DEV_DEFAULT_PASSWORD = __DEV__ ? '123' : '';
 
-// Online logo (per request: use an online logo). A neutral community/building glyph on a soft badge.
-const LOGO_URI = 'https://cdn-icons-png.flaticon.com/512/619/619153.png';
+const FEATURES: { icon: keyof typeof Ionicons.glyphMap; key: string; tint: string }[] = [
+  { icon: 'shield-checkmark', key: 'features.secureSociety', tint: theme.color.primary },
+  { icon: 'people', key: 'features.connectedResidents', tint: theme.color.info },
+  { icon: 'settings-sharp', key: 'features.easyManagement', tint: '#8250df' },
+  { icon: 'leaf', key: 'features.greenerLiving', tint: '#16a34a' },
+];
 
 
-export function LoginScreen({ appTitle, onForgotPassword, onRegister, headerSlot }: LoginScreenProps) {
+export function LoginScreen({ appTitle, onForgotPassword, onRegister, logo, storage, headerSlot }: LoginScreenProps) {
   const { login } = useAuth();
-  // DEV ONLY: prefilled credentials for faster local testing. REMOVE before production.
+  const { t } = useTranslation();
   const [identifier, setIdentifier] = useState(DEV_DEFAULT_IDENTIFIER);
   const [password, setPassword] = useState(DEV_DEFAULT_PASSWORD);
+  const [remember, setRemember] = useState(true);
+  const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<FormErrorView>(NO_ERROR);
 
@@ -61,7 +68,6 @@ export function LoginScreen({ appTitle, onForgotPassword, onRegister, headerSlot
     setError(NO_ERROR);
     try {
       await login({ identifier: identifier.trim(), password, platform: Platform.OS });
-      // On success the AuthProvider switches the shell to the authenticated app — nothing to do.
     } catch (err) {
       const view = toFormError(err);
       if (err instanceof ApiRequestError && err.code === 'UNAUTHENTICATED' && !/lock/i.test(err.message)) {
@@ -77,10 +83,8 @@ export function LoginScreen({ appTitle, onForgotPassword, onRegister, headerSlot
   const insets = useSafeInsets();
   return (
     <View style={styles.root} accessibilityLabel={`${appTitle} sign in`}>
-      {/* Gradient-like backdrop: a dark base with soft translucent colour blobs (pure-RN "gradient"). */}
       <View style={styles.backdrop} pointerEvents="none">
         <View style={[styles.blob, styles.blobTop]} />
-        <View style={[styles.blob, styles.blobMid]} />
         <View style={[styles.blob, styles.blobBottom]} />
       </View>
 
@@ -92,68 +96,88 @@ export function LoginScreen({ appTitle, onForgotPassword, onRegister, headerSlot
           <ScrollView
             contentContainerStyle={[
               styles.scroll,
-              { paddingTop: styles.scroll.padding + insets.top, paddingBottom: styles.scroll.padding + insets.bottom },
+              { paddingTop: theme.spacing.xxl + insets.top, paddingBottom: theme.spacing.lg + insets.bottom },
             ]}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            {/* Branded header — clay logo badge */}
-            <View style={styles.header}>
-              <View style={styles.logoClay}>
-                <View style={styles.logoInner}>
-                  <Image
-                    source={{ uri: LOGO_URI }}
-                    style={styles.logo}
-                    resizeMode="contain"
-                    accessible={false}
-                  />
-                </View>
+            {storage ? (
+              <View style={styles.langRow}>
+                <LanguageSwitcher storage={storage} />
               </View>
-              <Text style={styles.brand} accessibilityRole="header">AanganOS</Text>
-              <View style={styles.brandPill}>
-                <Text style={styles.brandSub}>{appTitle}</Text>
-              </View>
-            </View>
+            ) : null}
 
-            {/* Frosted glass card */}
-            <View style={styles.glassCard}>
-              <Text style={styles.cardTitle}>Welcome back</Text>
-              <Text style={styles.cardSubtitle}>Sign in to continue to your account</Text>
+            <BrandLogo {...(logo ? { logo } : {})} size={96} />
+
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>{t('common.welcomeBack')} 👋</Text>
+              <Text style={styles.cardSubtitle}>{t('common.signInSubtitle')}</Text>
 
               {headerSlot}
               <FormBanner message={error.message} tone="error" testID="login-error" />
 
-              {/* Neumorphic field well: the inputs sit on a soft extruded surface. */}
-              <View style={styles.fieldWell}>
-                <PhoneField
-                  label="Phone number"
-                  value={identifier}
-                  onChangeText={setIdentifier}
-                  {...(error.fieldErrors.identifier ? { error: error.fieldErrors.identifier } : {})}
-                  editable={!submitting}
-                  placeholder="Your phone number"
-                  testID="login-identifier"
-                />
-                <AppTextField
-                  label="Password"
-                  value={password}
-                  onChangeText={setPassword}
-                  error={error.fieldErrors.password}
-                  placeholder="Your password"
-                  secureTextEntry
-                  autoCapitalize="none"
-                  autoComplete="password"
-                  textContentType="password"
-                  editable={!submitting}
-                  returnKeyType="go"
-                  onSubmitEditing={submit}
-                  testID="login-password"
-                />
+              <PhoneField
+                label={t('common.mobileNumber')}
+                value={identifier}
+                onChangeText={setIdentifier}
+                {...(error.fieldErrors.identifier ? { error: error.fieldErrors.identifier } : {})}
+                editable={!submitting}
+                placeholder={t('common.mobileNumber')}
+                testID="login-identifier"
+              />
+              <View style={styles.field}>
+                <Text style={styles.fieldLabel}>{t('common.password')}</Text>
+                <View style={[styles.inputRow, error.fieldErrors.password ? styles.inputRowError : null]}>
+                  <Ionicons name="lock-closed-outline" size={20} color={theme.color.mutedText} style={styles.inputIcon} />
+                  <TextInput
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholder={t('common.password')}
+                    placeholderTextColor={theme.color.mutedText}
+                    secureTextEntry={!showPassword}
+                    autoCapitalize="none"
+                    autoComplete="password"
+                    textContentType="password"
+                    editable={!submitting}
+                    returnKeyType="go"
+                    onSubmitEditing={submit}
+                    accessibilityLabel={t('common.password')}
+                    style={styles.inputControl}
+                    testID="login-password"
+                  />
+                  <Pressable
+                    onPress={() => setShowPassword((v) => !v)}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+                    style={styles.inputIconBtn}
+                  >
+                    <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color={theme.color.mutedText} />
+                  </Pressable>
+                </View>
+                {error.fieldErrors.password ? (
+                  <Text style={styles.fieldError} accessibilityLiveRegion="polite" accessibilityRole="alert">
+                    {error.fieldErrors.password}
+                  </Text>
+                ) : null}
               </View>
 
-              <View style={styles.forgotRow}>
+              <View style={styles.row}>
+                <Pressable
+                  style={styles.remember}
+                  onPress={() => setRemember((v) => !v)}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: remember }}
+                  accessibilityLabel="Remember me"
+                  hitSlop={6}
+                >
+                  <View style={[styles.checkbox, remember ? styles.checkboxOn : null]}>
+                    {remember ? <Ionicons name="checkmark" size={13} color={theme.color.primaryText} /> : null}
+                  </View>
+                  <Text style={styles.rememberText}>{t('common.rememberMe')}</Text>
+                </Pressable>
                 <LinkButton
-                  title="Forgot password?"
+                  title={t('common.forgotPassword')}
                   onPress={onForgotPassword}
                   disabled={submitting}
                   accessibilityHint="Opens the password reset screen"
@@ -161,19 +185,33 @@ export function LoginScreen({ appTitle, onForgotPassword, onRegister, headerSlot
                 />
               </View>
 
-              <AppButton
-                title="Sign in"
+              <Pressable
                 onPress={submit}
-                loading={submitting}
-                accessibilityHint="Signs in with your email or phone and password"
+                disabled={submitting}
+                accessibilityRole="button"
+                accessibilityLabel={t('common.login')}
+                accessibilityHint="Signs in with your phone and password"
+                accessibilityState={{ disabled: submitting, busy: submitting }}
                 testID="login-submit"
-              />
+                style={({ pressed }) => [styles.loginBtn, pressed && !submitting ? styles.pressed : null, submitting ? styles.loginBtnDisabled : null]}
+              >
+                {submitting ? (
+                  <ActivityIndicator color={theme.color.primaryText} />
+                ) : (
+                  <>
+                    <Text style={styles.loginText}>{t('common.login')}</Text>
+                    <View style={styles.loginArrow}>
+                      <Ionicons name="arrow-forward" size={18} color={theme.color.primaryText} />
+                    </View>
+                  </>
+                )}
+              </Pressable>
 
               {onRegister ? (
                 <View style={styles.registerRow}>
-                  <Text style={styles.registerText}>New here?</Text>
+                  <Text style={styles.registerText}>{t('common.newHere')}</Text>
                   <LinkButton
-                    title="Register"
+                    title={t('common.createAccountShort')}
                     onPress={onRegister}
                     disabled={submitting}
                     accessibilityHint="Opens the registration screen"
@@ -183,7 +221,16 @@ export function LoginScreen({ appTitle, onForgotPassword, onRegister, headerSlot
               ) : null}
             </View>
 
-            <Text style={styles.footer}>Secure community management</Text>
+            <View style={styles.features}>
+              {FEATURES.map((f) => (
+                <View key={f.key} style={styles.feature}>
+                  <View style={[styles.featureIcon, { backgroundColor: `${f.tint}1f` }]}>
+                    <Ionicons name={f.icon} size={20} color={f.tint} />
+                  </View>
+                  <Text style={styles.featureLabel}>{t(f.key)}</Text>
+                </View>
+              ))}
+            </View>
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -192,82 +239,66 @@ export function LoginScreen({ appTitle, onForgotPassword, onRegister, headerSlot
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: theme.color.primary },
+  root: { flex: 1, backgroundColor: theme.color.background },
   flex: { flex: 1 },
 
-  // --- Gradient-like backdrop (blue base + soft colour blobs), matching the home header. ---
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: theme.color.primary, overflow: 'hidden' },
+  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: theme.color.background, overflow: 'hidden' },
   blob: { position: 'absolute', borderRadius: 9999 },
-  blobTop: {
-    width: 420, height: 420, top: -140, right: -120,
-    backgroundColor: 'rgba(255,255,255,0.18)', // light glow
-  },
-  blobMid: {
-    width: 360, height: 360, top: 180, left: -140,
-    backgroundColor: 'rgba(14,165,233,0.45)', // cyan glow
-  },
-  blobBottom: {
-    width: 460, height: 460, bottom: -180, right: -80,
-    backgroundColor: 'rgba(37,99,235,0.55)', // deeper blue
-  },
+  blobTop: { width: 380, height: 380, top: -160, right: -120, backgroundColor: 'rgba(5,184,114,0.10)' },
+  blobBottom: { width: 420, height: 420, bottom: -200, left: -140, backgroundColor: 'rgba(14,165,233,0.08)' },
 
-  scroll: { flexGrow: 1, justifyContent: 'center', padding: theme.spacing.xl, gap: theme.spacing.xl },
+  scroll: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: theme.spacing.lg, gap: theme.spacing.lg },
 
-  // --- Header + clay logo badge ---
-  header: { alignItems: 'center', gap: theme.spacing.md },
-  logoClay: {
-    width: 104, height: 104, borderRadius: 34,
-    backgroundColor: 'rgba(255,255,255,0.16)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)',
-    alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 14 }, shadowOpacity: 0.3, shadowRadius: 24, elevation: 12,
-  },
-  logoInner: {
-    width: 76, height: 76, borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#0b1726', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.18, shadowRadius: 10, elevation: 4,
-  },
-  logo: { width: 46, height: 46, tintColor: theme.color.primary },
-  brand: { fontSize: theme.fontSize.display, fontWeight: '800', color: '#ffffff', letterSpacing: 0.3 },
-  brandPill: {
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.28)',
-    borderRadius: theme.radius.pill,
-    paddingHorizontal: theme.spacing.md, paddingVertical: 4,
-  },
-  brandSub: {
-    fontSize: theme.fontSize.caption, color: '#ffffff', fontWeight: '700',
-    textTransform: 'uppercase', letterSpacing: 2,
-  },
+  langRow: { alignItems: 'flex-end' },
 
-  // --- Frosted glass card ---
-  glassCard: {
-    backgroundColor: 'rgba(255,255,255,0.90)',
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.6)',
+  card: {
+    backgroundColor: theme.color.surface,
+    borderRadius: theme.radius.xl,
     padding: theme.spacing.xl,
     gap: theme.spacing.md,
-    shadowColor: '#030712', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.35, shadowRadius: 30, elevation: 16,
+    ...theme.shadow.card,
   },
-  cardTitle: { fontSize: theme.fontSize.title, fontWeight: '800', color: theme.color.text },
-  cardSubtitle: { fontSize: theme.fontSize.body, color: theme.color.mutedText, marginBottom: theme.spacing.xs },
+  cardTitle: { fontSize: theme.fontSize.heading, fontWeight: '800', color: theme.color.text },
+  cardSubtitle: { fontSize: theme.fontSize.label, color: theme.color.mutedText, marginBottom: theme.spacing.xs },
 
-  // --- Neumorphic field well ---
-  fieldWell: {
-    backgroundColor: '#eef1f8',
-    borderRadius: theme.radius.lg,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.8)',
-    padding: theme.spacing.md,
-    gap: theme.spacing.md,
-    // Soft inset-ish feel: a subtle outer shadow so the well reads as a soft extruded surface.
-    shadowColor: '#aeb7cc', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.5, shadowRadius: 12, elevation: 2,
+  field: { gap: theme.spacing.xs },
+  fieldLabel: { fontSize: theme.fontSize.label, color: theme.color.text, fontWeight: '600' },
+  inputRow: {
+    flexDirection: 'row', alignItems: 'center',
+    minHeight: theme.minTouchTarget,
+    borderWidth: 1, borderColor: theme.color.border, borderRadius: theme.radius.md,
+    paddingHorizontal: theme.spacing.md,
   },
+  inputRowError: { borderColor: theme.color.danger },
+  inputIcon: { marginRight: theme.spacing.sm },
+  inputControl: { flex: 1, fontSize: theme.fontSize.body, color: theme.color.text, paddingVertical: theme.spacing.sm },
+  inputIconBtn: { paddingLeft: theme.spacing.sm, alignItems: 'center', justifyContent: 'center' },
+  fieldError: { fontSize: theme.fontSize.label, color: theme.color.danger },
 
-  forgotRow: { alignItems: 'flex-end', marginTop: -theme.spacing.xs, marginBottom: theme.spacing.xs },
-  registerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.spacing.xs, marginTop: theme.spacing.sm },
+  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: -theme.spacing.xs },
+  remember: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
+  checkbox: {
+    width: 20, height: 20, borderRadius: 6, borderWidth: 1.5, borderColor: theme.color.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  checkboxOn: { backgroundColor: theme.color.primary, borderColor: theme.color.primary },
+  rememberText: { fontSize: theme.fontSize.label, color: theme.color.text, fontWeight: '600' },
+
+  loginBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    minHeight: 54, borderRadius: theme.radius.lg, backgroundColor: theme.color.primary,
+    paddingHorizontal: theme.spacing.lg,
+  },
+  loginBtnDisabled: { backgroundColor: theme.color.disabled },
+  loginText: { color: theme.color.primaryText, fontSize: theme.fontSize.body, fontWeight: '800' },
+  loginArrow: { position: 'absolute', right: theme.spacing.lg, width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' },
+  pressed: { opacity: 0.85 },
+
+  registerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.spacing.xs, marginTop: theme.spacing.xs },
   registerText: { color: theme.color.mutedText, fontSize: theme.fontSize.label },
-  footer: { textAlign: 'center', color: 'rgba(255,255,255,0.7)', fontSize: theme.fontSize.label },
+
+  features: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: theme.spacing.xs },
+  feature: { flex: 1, alignItems: 'center', gap: theme.spacing.xs },
+  featureIcon: { width: 44, height: 44, borderRadius: theme.radius.pill, alignItems: 'center', justifyContent: 'center' },
+  featureLabel: { fontSize: theme.fontSize.caption, color: theme.color.text, fontWeight: '600', textAlign: 'center', lineHeight: 15 },
 });

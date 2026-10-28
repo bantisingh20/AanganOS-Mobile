@@ -17,6 +17,13 @@ export interface PublicUnit {
   readonly wingId: string | null;
 }
 
+export interface PublicWing {
+  readonly id: string;
+  readonly name: string;
+  readonly level: string;
+  readonly parentId: string | null;
+}
+
 export interface SelfRegisterBody {
   readonly communityId: string;
   readonly unitId: string;
@@ -24,7 +31,16 @@ export interface SelfRegisterBody {
   readonly phone: string;
   readonly email?: string;
   readonly password: string;
+  readonly code: string;
   readonly photoBase64?: string;
+  readonly residentType?: string;
+  readonly dateOfBirth?: string;
+  readonly gender?: string;
+  readonly moveInDate?: string;
+  readonly govtIdType?: string;
+  readonly selfieBase64?: string;
+  readonly govtIdFrontBase64?: string;
+  readonly govtIdBackBase64?: string;
 }
 
 export interface SelfRegisterResult {
@@ -50,10 +66,34 @@ export class OnboardingClient {
     });
   }
 
-  listUnits(communityId: string, search?: string, options?: { signal?: AbortSignal }): Promise<PublicUnit[]> {
-    const qs = search ? `?search=${encodeURIComponent(search)}` : '';
+  listWings(communityId: string, options?: { signal?: AbortSignal }): Promise<PublicWing[]> {
+    return this.api.get<PublicWing[]>(`/api/v1/public/communities/${communityId}/wings`, {
+      ...options,
+      anonymous: true,
+    });
+  }
+
+  listUnits(communityId: string, wingId?: string, search?: string, options?: { signal?: AbortSignal }): Promise<PublicUnit[]> {
+    const params = new URLSearchParams();
+    if (wingId) params.set('wingId', wingId);
+    if (search) params.set('search', search);
+    const qs = params.toString() ? `?${params.toString()}` : '';
     return this.api.get<PublicUnit[]>(`/api/v1/public/communities/${communityId}/units${qs}`, {
       ...options,
+      anonymous: true,
+    });
+  }
+
+  requestOtp(phone: string): Promise<{ valid: boolean }> {
+    return this.api.post<{ valid: boolean }>('/api/v1/public/register/request-otp', {
+      body: { phone },
+      anonymous: true,
+    });
+  }
+
+  verifyOtp(phone: string, code: string): Promise<{ valid: boolean }> {
+    return this.api.post<{ valid: boolean }>('/api/v1/public/register/verify-otp', {
+      body: { phone, code },
       anonymous: true,
     });
   }

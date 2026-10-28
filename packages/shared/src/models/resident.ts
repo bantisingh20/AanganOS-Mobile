@@ -7,6 +7,7 @@
 
 /** Well-known resident verification status codes (from the `Resident_Verification_Status` list). */
 export const ResidentVerificationStatus = {
+  Draft: 'draft',
   Pending: 'pending',
   Verified: 'verified',
   Rejected: 'rejected',

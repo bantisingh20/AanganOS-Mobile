@@ -20,3 +20,4 @@ export * from './ui';
 export * from './screens';
 export * from './resources';
 export * from './features';
+export * from './i18n';
