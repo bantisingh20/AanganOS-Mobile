@@ -6,7 +6,7 @@ import { BottomTabBar, type TabKey } from '../ui/BottomTabBar';
 import { theme } from '../ui/theme';
 import { useAsync } from '../ui/hooks';
 import type { PagedData } from '../models/envelope';
-import type { Visitor } from '../models/gate';
+import type { Visitor, EntryExitEvent } from '../models/gate';
 import { VisitorStatus } from '../models/gate';
 import type { Parcel } from '../models/parcel';
 import { ParcelStatus } from '../models/parcel';
@@ -46,6 +46,7 @@ import { GuardLookupScreen } from './guard/LookupScreen';
 import { VisitPassVerifyScreen } from './guard/VisitPassVerifyScreen';
 import { WalkInCaptureScreen } from './guard/WalkInCaptureScreen';
 import { EntryExitLogScreen } from './guard/EntryExitLogScreen';
+import { EntryExitDetailScreen } from './guard/EntryExitDetailScreen';
 import { WatchlistScreen } from './guard/WatchlistScreen';
 import { SosScreen } from './guard/SosScreen';
 import { RegisterParcelScreen } from './guard/RegisterParcelScreen';
@@ -290,6 +291,16 @@ export function HomeNavigator({ resources, isAdmin = false, appTitle, logo, offl
           resources={resources}
           {...(offlineQueue ? { offlineQueue } : {})}
           onBack={back}
+          onOpenDetail={(event) => go({ name: 'entryExitDetail', event })}
+        />
+      );
+    case 'entryExitDetail':
+      return (
+        <EntryExitDetailScreen
+          resources={resources}
+          event={route.event}
+          onBack={back}
+          onExited={back}
         />
       );
     case 'watchlist':
@@ -491,6 +502,7 @@ type Route =
   | { name: 'verifyPass' }
   | { name: 'walkInCapture' }
   | { name: 'entryExit' }
+  | { name: 'entryExitDetail'; event: EntryExitEvent }
   | { name: 'watchlist' }
   | { name: 'sos' }
   | { name: 'registerParcel' }

@@ -143,6 +143,10 @@ export interface EntryExitEvent {
   readonly vehicleNumber: string | null;
   readonly entryTsUtc: string;
   readonly exitTsUtc: string | null;
+  readonly hostUnitNumber: string | null;
+  readonly visitorPhone: string | null;
+  readonly photoFileId: string | null;
+  readonly whomToMeet: string | null;
 }
 
 /** Mirror of `WatchlistEntryDto` (Req 26.1). */

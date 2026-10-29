@@ -2,6 +2,7 @@ export * from './LookupScreen';
 export * from './VisitPassVerifyScreen';
 export * from './WalkInCaptureScreen';
 export * from './EntryExitLogScreen';
+export * from './EntryExitDetailScreen';
 export * from './WatchlistScreen';
 export * from './SosScreen';
 export * from './RegisterParcelScreen';

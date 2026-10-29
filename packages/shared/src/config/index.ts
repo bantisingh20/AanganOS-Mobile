@@ -26,7 +26,7 @@ const DEFAULT_DEVICE_REGISTER_PATH = '/api/v1/devices';
  * not picked up): the app still renders the login screen, and any backend/connectivity problem
  * surfaces as a normal error on the login request instead of a startup crash.
  */
-const DEFAULT_API_BASE_URL = 'https://urbannestapi.sharcnix.com';
+const DEFAULT_API_BASE_URL = 'https://aanganosapi.sharcnix.com';
 
 /** c31cd751-3421-4582-8ba8-0f2a236398b5
  * Fallback OneSignal app id used ONLY when `EXPO_PUBLIC_ONESIGNAL_APP_ID` is absent at build time.
