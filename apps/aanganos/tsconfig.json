@@ -1,9 +1,0 @@
-{
-  "extends": "../../tsconfig.base.json",
-  "compilerOptions": {
-    "noEmit": true,
-    "lib": ["esnext", "dom"],
-    "types": ["react", "react-native"]
-  },
-  "include": ["index.ts", "App.tsx", "src/**/*.ts", "src/**/*.tsx", "app.config.ts"]
-}
