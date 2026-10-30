@@ -29,6 +29,8 @@ npm-debug.*
 .env
 .env.*
 !.env.example
+# committed local-dev defaults (no secrets; points at localhost:5272)
+!.env.development
 appsettings.Development.json
 **/appsettings.Development.json
 
