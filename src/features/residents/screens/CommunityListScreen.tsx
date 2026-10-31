@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FormScreen } from '@/components/ui/FormScreen';
@@ -53,8 +53,14 @@ function typeIcon(code: string): keyof typeof Ionicons.glyphMap {
  */
 export function CommunityListScreen({ resources, onOpenCommunity, canCreate = false, onBack }: CommunityListScreenProps) {
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [communityType, setCommunityType] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
   const [rows, setRows] = useState<Community[]>([]);
   const [page, setPage] = useState(1);
@@ -71,13 +77,17 @@ export function CommunityListScreen({ resources, onOpenCommunity, canCreate = fa
     [],
   );
 
+  const inFlightRef = useRef(false);
+
   const loadPage = useCallback(
     async (p: number) => {
+      if (inFlightRef.current) return;
+      inFlightRef.current = true;
       try {
         if (p === 1) { setInitialLoading(true); setError(null); }
         else setLoadingMore(true);
         const list: PagedData<Community> = await resources.communities.list(
-          { search: search.trim() || undefined, page: p, pageSize: PAGE_SIZE },
+          { search: debouncedSearch || undefined, page: p, pageSize: PAGE_SIZE },
           communityType ? { communityType } : {},
         );
         setTotalCount(list.totalCount);
@@ -87,19 +97,19 @@ export function CommunityListScreen({ resources, onOpenCommunity, canCreate = fa
         if (p === 1) setError(toFormError(e));
         else showErrorAlert(e, 'Could not load more');
       } finally {
+        inFlightRef.current = false;
         setInitialLoading(false);
         setLoadingMore(false);
       }
     },
-    [resources, search, communityType],
+    [resources, debouncedSearch, communityType],
   );
 
-  // Reload on search / filter change (debounced lightly by the user's typing cadence is fine here).
   const reload = useCallback(() => { void loadPage(1); }, [loadPage]);
   useEffect(() => { void loadPage(1); }, [loadPage]);
 
   const loadMore = useCallback(() => {
-    if (!loadingMore && !initialLoading && hasMore) {
+    if (!inFlightRef.current && !loadingMore && !initialLoading && hasMore) {
       void loadPage(page + 1);
     }
   }, [loadingMore, initialLoading, hasMore, page, loadPage]);

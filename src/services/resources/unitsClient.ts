@@ -11,6 +11,7 @@ export interface UnitListFilters {
   readonly unitType?: string;
   readonly floor?: string;
   readonly hierarchyNodeId?: string;
+  readonly availableForOwner?: boolean;
 }
 
 /** Register a vehicle against a unit (Req 19.1, 19.2). */
@@ -76,6 +77,7 @@ export class UnitsClient {
       unitType: filters.unitType,
       floor: filters.floor,
       hierarchyNodeId: filters.hierarchyNodeId,
+      availableForOwner: filters.availableForOwner,
     });
     return this.api.get<PagedData<Unit>>(`/api/v1/units${qs}`, options);
   }

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
 import { FormScreen } from '@/components/ui/FormScreen';
+import { parseUtc } from '@/utils/datetime';
 import { FormSection } from '@/components/ui/FormSection';
 import { FormBanner } from '@/components/ui/FormBanner';
 import { ListRow } from '@/components/ui/ListRow';
@@ -128,7 +129,7 @@ function initials(name: string): string {
 }
 
 function formatDate(iso: string): string {
-  const d = new Date(iso);
+  const d = parseUtc(iso);
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 

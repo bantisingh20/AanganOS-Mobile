@@ -174,10 +174,12 @@ export class ApiClient {
         throw cause;
       }
       const timedOut = controller.signal.aborted;
-      // eslint-disable-next-line no-console
-      console.warn(
-        `[API-NET] ${method} ${url} ${timedOut ? 'timed out' : 'failed'} corr=${correlationId}: ${String((cause as Error)?.message ?? cause)}`,
-      );
+      if (__DEV__) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[API-NET] ${method} ${url} ${timedOut ? 'timed out' : 'failed'} corr=${correlationId}: ${String((cause as Error)?.message ?? cause)}`,
+        );
+      }
       throw new ApiRequestError({
         code: 'INTEGRATION_FAILURE',
         message: timedOut ? 'The server took too long to respond.' : 'Network request failed.',
@@ -205,6 +207,9 @@ export class ApiClient {
     const correlationId = envelope?.correlationId || headerCorrelationId || fallbackCorrelationId;
 
     if (!envelope) {
+      if (response.ok) {
+        return null as T;
+      }
       throw new ApiRequestError({
         code: httpStatusToCode(response.status),
         message: `Unexpected non-JSON response (HTTP ${response.status}).`,

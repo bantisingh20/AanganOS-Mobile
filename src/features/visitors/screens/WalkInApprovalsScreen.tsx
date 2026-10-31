@@ -11,6 +11,7 @@ import { DateField } from '@/components/ui/DateField';
 import { Pager } from '@/components/ui/Pager';
 import { FormBanner } from '@/components/ui/FormBanner';
 import { useAsync, useAsyncAction } from '@/hooks';
+import { invalidateAsyncCache } from '@/hooks/useAsync';
 import { useAuth } from '@/store/AuthContext';
 import { theme } from '@/theme';
 import { DEFAULT_PAGE_SIZE } from '@/types/query';
@@ -174,7 +175,7 @@ function VisitorList({
   const checkIn = useAsyncAction((visitorId: string) => resources.gate.recordEntry({ visitorId }));
   const checkOut = useAsyncAction((visitorId: string) => resources.gate.recordExit({ visitorId }));
 
-  const reloadAll = () => { list.reload(); openEvents.reload(); };
+  const reloadAll = () => { list.reload(); openEvents.reload(); invalidateAsyncCache('dash:'); };
 
   const items = list.data?.items ?? [];
   const total = list.data?.totalCount ?? 0;

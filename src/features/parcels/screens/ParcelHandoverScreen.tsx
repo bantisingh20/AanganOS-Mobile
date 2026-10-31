@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FormScreen } from '@/components/ui/FormScreen';
+import { parseUtc } from '@/utils/datetime';
 import { FormSection } from '@/components/ui/FormSection';
 import { AppTextField } from '@/components/ui/AppTextField';
 import { AppButton } from '@/components/ui/AppButton';
@@ -392,7 +393,7 @@ function isTransport(err: unknown): boolean {
 }
 
 function formatDateTime(iso: string): string {
-  const d = new Date(iso);
+  const d = parseUtc(iso);
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
 }
 

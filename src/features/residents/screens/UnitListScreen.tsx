@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FormScreen } from '@/components/ui/FormScreen';
@@ -76,9 +76,12 @@ export function UnitListScreen({ resources, community, onOpenUnit, onBack }: Uni
   // When scoped to a community, the list is narrowed to it client-side (see class note), so "more"
   // is driven by the server's total rather than the filtered count.
   const hasMore = rows.length < totalCount;
+  const inFlightRef = useRef(false);
 
   const loadPage = useCallback(
     async (p: number) => {
+      if (inFlightRef.current) return;
+      inFlightRef.current = true;
       try {
         if (p === 1) { setInitialLoading(true); setError(null); }
         else setLoadingMore(true);
@@ -91,6 +94,7 @@ export function UnitListScreen({ resources, community, onOpenUnit, onBack }: Uni
         if (p === 1) setError(toFormError(e));
         else showErrorAlert(e, 'Could not load more');
       } finally {
+        inFlightRef.current = false;
         setInitialLoading(false);
         setLoadingMore(false);
       }
@@ -102,7 +106,7 @@ export function UnitListScreen({ resources, community, onOpenUnit, onBack }: Uni
   useEffect(() => { void loadPage(1); }, [loadPage]);
 
   const loadMore = useCallback(() => {
-    if (!loadingMore && !initialLoading && hasMore) {
+    if (!inFlightRef.current && !loadingMore && !initialLoading && hasMore) {
       void loadPage(page + 1);
     }
   }, [loadingMore, initialLoading, hasMore, page, loadPage]);

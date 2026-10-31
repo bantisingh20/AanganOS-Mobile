@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, FlatList, Image, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FormScreen } from '@/components/ui/FormScreen';
@@ -38,19 +38,11 @@ interface GuardRow {
   readonly status: string | null;
 }
 
-/** Resolve the login status for a page of residents in parallel (bounded by the page size). */
-async function toRows(
-  residents: readonly Resident[],
-  resources: ResourceClients,
-  signal?: AbortSignal,
-): Promise<GuardRow[]> {
-  return Promise.all(
-    residents.map(async (resident) => {
-      if (!resident.userId) return { resident, status: null } as GuardRow;
-      const user = await resources.users.get(resident.userId, signal ? { signal } : undefined).catch(() => null);
-      return { resident, status: user ? user.status : null } as GuardRow;
-    }),
-  );
+function toRows(residents: readonly Resident[]): GuardRow[] {
+  return residents.map((resident) => ({
+    resident,
+    status: resident.userId ? resident.loginStatus : null,
+  }));
 }
 
 function warn(message: string): void {
@@ -75,12 +67,15 @@ export function SecurityStaffListScreen({ resources, onBack }: SecurityStaffList
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<FormErrorView | null>(null);
   const [sheet, setSheet] = useState<SheetMode>({ kind: 'closed' });
+  const inFlightRef = useRef(false);
 
   const hasMore = rows.length < totalCount;
 
   /** Load a specific page; page 1 replaces, later pages append. */
   const loadPage = useCallback(
     async (p: number) => {
+      if (inFlightRef.current) return;
+      inFlightRef.current = true;
       try {
         if (p === 1) { setInitialLoading(true); setError(null); }
         else setLoadingMore(true);
@@ -88,7 +83,7 @@ export function SecurityStaffListScreen({ resources, onBack }: SecurityStaffList
           { page: p, pageSize: PAGE_SIZE },
           { residentType: SECURITY_RESIDENT_TYPE },
         );
-        const pageRows = await toRows(list.items, resources);
+        const pageRows = toRows(list.items);
         setTotalCount(list.totalCount);
         setPage(p);
         setRows((prev) => (p === 1 ? pageRows : [...prev, ...pageRows]));
@@ -96,6 +91,7 @@ export function SecurityStaffListScreen({ resources, onBack }: SecurityStaffList
         if (p === 1) setError(toFormError(e));
         else showErrorAlert(e, 'Could not load more');
       } finally {
+        inFlightRef.current = false;
         setInitialLoading(false);
         setLoadingMore(false);
       }
@@ -108,7 +104,7 @@ export function SecurityStaffListScreen({ resources, onBack }: SecurityStaffList
   useEffect(() => { void loadPage(1); }, [loadPage]);
 
   const loadMore = useCallback(() => {
-    if (!loadingMore && !initialLoading && hasMore) {
+    if (!inFlightRef.current && !loadingMore && !initialLoading && hasMore) {
       void loadPage(page + 1);
     }
   }, [loadingMore, initialLoading, hasMore, page, loadPage]);

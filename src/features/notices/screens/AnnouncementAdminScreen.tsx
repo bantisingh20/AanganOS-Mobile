@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Dimensions,
@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FormScreen } from '@/components/ui/FormScreen';
+import { parseUtc } from '@/utils/datetime';
 import { AppTextField } from '@/components/ui/AppTextField';
 import { AppButton } from '@/components/ui/AppButton';
 import { Select, type SelectOption } from '@/components/ui/Select';
@@ -54,7 +55,7 @@ function categoryIcon(code: string): keyof typeof Ionicons.glyphMap {
 
 /** Short, locale-aware date for the card subtitle. */
 function shortDate(iso: string): string {
-  const d = new Date(iso);
+  const d = parseUtc(iso);
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString();
 }
 
@@ -83,9 +84,12 @@ export function AnnouncementAdminScreen({ resources, onBack }: AnnouncementAdmin
   const [sheet, setSheet] = useState<SheetMode>({ kind: 'closed' });
 
   const hasMore = rows.length < totalCount;
+  const inFlightRef = useRef(false);
 
   const loadPage = useCallback(
     async (p: number) => {
+      if (inFlightRef.current) return;
+      inFlightRef.current = true;
       try {
         if (p === 1) { setInitialLoading(true); setError(null); }
         else setLoadingMore(true);
@@ -100,6 +104,7 @@ export function AnnouncementAdminScreen({ resources, onBack }: AnnouncementAdmin
         if (p === 1) setError(toFormError(e));
         else showErrorAlert(e, 'Could not load more');
       } finally {
+        inFlightRef.current = false;
         setInitialLoading(false);
         setLoadingMore(false);
       }
@@ -111,7 +116,7 @@ export function AnnouncementAdminScreen({ resources, onBack }: AnnouncementAdmin
   useEffect(() => { void loadPage(1); }, [loadPage]);
 
   const loadMore = useCallback(() => {
-    if (!loadingMore && !initialLoading && hasMore) {
+    if (!inFlightRef.current && !loadingMore && !initialLoading && hasMore) {
       void loadPage(page + 1);
     }
   }, [loadingMore, initialLoading, hasMore, page, loadPage]);

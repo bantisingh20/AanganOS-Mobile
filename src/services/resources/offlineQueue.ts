@@ -64,10 +64,10 @@ export class GateOfflineQueue {
    * Enqueue a capture to sync later. Assigns a stable idempotency key up front so the eventual
    * send (and any retry) is at-most-once. Returns the stored item.
    */
-  async enqueue(kind: 'entry' | 'exit', body: RecordEntryBody | RecordExitBody): Promise<QueuedGateCapture> {
+  async enqueue(kind: 'entry' | 'exit', body: RecordEntryBody | RecordExitBody, idempotencyKey?: string): Promise<QueuedGateCapture> {
     const item: QueuedGateCapture = {
       localId: newIdempotencyKey(),
-      idempotencyKey: newIdempotencyKey(),
+      idempotencyKey: idempotencyKey ?? newIdempotencyKey(),
       kind,
       body,
       capturedAtUtc: new Date().toISOString(),
@@ -126,12 +126,12 @@ export class GateOfflineQueue {
   }
 }
 
-/** A transient failure means "try again later" (offline / server unreachable), not a permanent reject. */
 function isTransient(err: unknown): boolean {
   if (err instanceof ApiRequestError) {
-    // httpStatus 0 = transport failure; INTEGRATION_FAILURE wraps a network error in the client.
-    return err.httpStatus === 0 || err.code === 'INTEGRATION_FAILURE';
+    if (err.httpStatus === 0 || err.code === 'INTEGRATION_FAILURE') return true;
+    if (err.code === 'UNAUTHENTICATED' || err.code === 'RATE_LIMITED' || err.code === 'INTERNAL_ERROR') return true;
+    if (err.httpStatus === 401 || err.httpStatus === 429 || err.httpStatus >= 500) return true;
+    return false;
   }
-  // Unknown error shapes are treated as transient so we never silently drop a capture.
   return true;
 }

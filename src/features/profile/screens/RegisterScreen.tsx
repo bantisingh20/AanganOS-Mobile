@@ -76,7 +76,22 @@ function formatCountdown(seconds: number): string {
   return `${m}:${s}`;
 }
 
+const MAX_UPLOAD_DIMENSION = 1280;
+
 async function toDataUrl(file: LocalFile): Promise<string> {
+  try {
+    const { manipulateAsync, SaveFormat } = await import('expo-image-manipulator');
+    const result = await manipulateAsync(
+      file.uri,
+      [{ resize: { width: MAX_UPLOAD_DIMENSION } }],
+      { compress: 0.6, format: SaveFormat.JPEG, base64: true },
+    );
+    if (result.base64) {
+      return `data:image/jpeg;base64,${result.base64}`;
+    }
+  } catch {
+    void 0;
+  }
   const base64 = await readAsStringAsync(file.uri, { encoding: EncodingType.Base64 });
   const mime = file.mimeType || 'image/jpeg';
   return `data:${mime};base64,${base64}`;

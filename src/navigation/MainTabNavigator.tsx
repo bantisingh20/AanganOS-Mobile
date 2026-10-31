@@ -6,11 +6,10 @@ import { BottomTabBar, type TabKey } from '@/components/layout/BottomTabBar';
 import { theme } from '@/theme';
 import { useAsync } from '@/hooks';
 import type { PagedData } from '@/types/envelope';
-import type { Visitor, EntryExitEvent } from '@/types/gate';
-import { VisitorStatus } from '@/types/gate';
-import type { Parcel } from '@/types/parcel';
-import { ParcelStatus } from '@/types/parcel';
+import type { EntryExitEvent } from '@/types/gate';
 import type { Announcement } from '@/types/announcement';
+import type { MyTaskSummaryItem } from '@/types/myTasks';
+import { MyTaskType } from '@/types/myTasks';
 import { useNavStack } from '@/navigation/navStack';
 import { useAuth } from '@/store/AuthContext';
 import { PermissionAction } from '../auth/permissions';
@@ -37,6 +36,7 @@ import { CommunicationPreferencesScreen } from '@/features/profile/screens/Commu
 import { InviteVisitorScreen } from '@/features/visitors/screens/InviteVisitorScreen';
 import { MyVisitorsScreen } from '@/features/visitors/screens/MyVisitorsScreen';
 import { WalkInApprovalsScreen } from '@/features/visitors/screens/WalkInApprovalsScreen';
+import { MyTasksScreen } from '@/features/tasks/screens/MyTasksScreen';
 import { RecurringVisitorsScreen } from '@/features/visitors/screens/RecurringVisitorsScreen';
 import { ParcelListScreen } from '@/features/parcels/screens/ParcelListScreen';
 import { RaiseTicketScreen } from '@/features/complaints/screens/RaiseTicketScreen';
@@ -100,6 +100,7 @@ export function HomeNavigator({ resources, isAdmin = false, appTitle, logo, offl
   // the Android hardware-back pops one screen, and only the top route renders (per-route rendering).
   const nav = useNavStack<Route>({ name: 'tabs', tab: 'home' });
   const route = nav.current;
+  const activeTab: TabKey = route.name === 'tabs' ? route.tab : 'home';
   const go = (r: Route) => nav.push(r);
   const back = () => nav.pop();
   // Tab switching models standard app tab history so the hardware back is never a dead-end:
@@ -144,11 +145,9 @@ export function HomeNavigator({ resources, isAdmin = false, appTitle, logo, offl
     !!meQuery.data?.resident &&
     myVerificationStatus !== 'verified';
 
-  // Unread notification count for the top-bar bell. Reloaded on tab/route change (cheap count call)
-  // so it refreshes after the user reads notifications or a new one arrives between navigations.
   const unreadQuery = useAsync(
     (signal) => resources.notifications.unreadCount({ signal }).catch(() => 0),
-    [resources, route.name],
+    [resources, activeTab],
   );
   const unreadCount = unreadQuery.data ?? 0;
 
@@ -269,6 +268,15 @@ export function HomeNavigator({ resources, isAdmin = false, appTitle, logo, offl
       return <MyVisitorsScreen resources={resources} onBack={back} />;
     case 'walkInApprovals':
       return <WalkInApprovalsScreen resources={resources} onBack={back} />;
+    case 'myTasks':
+      return (
+        <MyTasksScreen
+          resources={resources}
+          onBack={back}
+          onNavigate={(name) => go({ name } as Route)}
+          {...(route.type ? { initialType: route.type } : {})}
+        />
+      );
     case 'notifications':
       return <NotificationsScreen resources={resources} onBack={back} />;
     case 'recurringVisitors':
@@ -349,7 +357,6 @@ export function HomeNavigator({ resources, isAdmin = false, appTitle, logo, offl
             {tab === 'home' ? (
               <DashboardTab
                 resources={resources}
-                routeKey={route.name}
                 canVehicleLookup={canVehicleLookup}
                 isResident={isResident}
                 isSecurity={isSecurity}
@@ -509,7 +516,8 @@ export type Route =
   | { name: 'parcelCustody' }
   | { name: 'parcelHandover' }
   | { name: 'workOrders'; assetId?: string; title?: string }
-  | { name: 'assetLookup' };
+  | { name: 'assetLookup' }
+  | { name: 'myTasks'; type?: string };
 
 /** A feature entry in the Services list. */
 interface Feature {
@@ -657,7 +665,6 @@ function todayLabel(): string {
  */
 function DashboardTab({
   resources,
-  routeKey,
   canVehicleLookup,
   isResident,
   isSecurity,
@@ -672,7 +679,6 @@ function DashboardTab({
   onOpenProfile,
 }: {
   resources: ResourceClients;
-  routeKey: string;
   canVehicleLookup: boolean;
   isResident: boolean;
   isSecurity: boolean;
@@ -688,89 +694,52 @@ function DashboardTab({
 }) {
   const [segment, setSegment] = useState<'community' | 'personal'>('community');
 
-  const pendingWalkIns = useAsync<PagedData<Visitor>>(
-    (signal) =>
-      isResident
-        ? resources.gate.listVisitors({ pageSize: 5 }, { status: VisitorStatus.Pending }, { signal })
-        : Promise.resolve(emptyPage<Visitor>()),
-    [resources, isResident, routeKey],
-  );
-
-  const awaitingParcels = useAsync<PagedData<Parcel>>(
-    (signal) =>
-      isResident
-        ? resources.parcels.listParcels(
-            { pageSize: 5, sort: 'receivedAtUtc:desc' },
-            { status: ParcelStatus.ReadyForPickup },
-            { signal },
-          )
-        : Promise.resolve(emptyPage<Parcel>()),
-    [resources, isResident, routeKey],
-  );
-
-  const approvedWalkIns = useAsync<PagedData<Visitor>>(
-    (signal) =>
-      isSecurity
-        ? resources.gate.listVisitors({ pageSize: 200 }, { status: VisitorStatus.Approved }, { signal })
-        : Promise.resolve(emptyPage<Visitor>()),
-    [resources, isSecurity, routeKey],
-  );
-
-  const gateEvents = useAsync(
-    (signal) =>
-      isSecurity
-        ? resources.gate.listEntryExitEvents({ pageSize: 200 }, {}, { signal })
-        : Promise.resolve(null),
-    [resources, isSecurity, routeKey],
+  const tasksSummary = useAsync<MyTaskSummaryItem[]>(
+    (signal) => resources.myTasks.summary({ signal }),
+    [resources],
+    { cacheKey: 'dash:tasksSummary' },
   );
 
   const openTickets = useAsync(
     (signal) => (isResident ? resources.helpdesk.listTickets({ pageSize: 1 }, { status: 'new' }, { signal }).catch(() => emptyPage()) : Promise.resolve(emptyPage())),
-    [resources, isResident, routeKey],
+    [resources, isResident],
+    { cacheKey: 'dash:openTickets' },
   );
   const inProgressTickets = useAsync(
     (signal) => (isResident ? resources.helpdesk.listTickets({ pageSize: 1 }, { status: 'in_progress' }, { signal }).catch(() => emptyPage()) : Promise.resolve(emptyPage())),
-    [resources, isResident, routeKey],
+    [resources, isResident],
+    { cacheKey: 'dash:inProgressTickets' },
   );
   const resolvedTickets = useAsync(
     (signal) => (isResident ? resources.helpdesk.listTickets({ pageSize: 1 }, { status: 'resolved' }, { signal }).catch(() => emptyPage()) : Promise.resolve(emptyPage())),
-    [resources, isResident, routeKey],
+    [resources, isResident],
+    { cacheKey: 'dash:resolvedTickets' },
   );
   const recentNotices = useAsync<PagedData<Announcement>>(
     (signal) => {
       const fromDate = new Date(Date.now() - RECENT_NOTICE_DAYS * 24 * 60 * 60 * 1000).toISOString();
       return resources.announcements.list({ pageSize: 3, sort: 'publishedAtUtc:desc' }, { fromDate }, { signal }).catch(() => emptyPage<Announcement>());
     },
-    [resources, routeKey],
+    [resources],
+    { cacheKey: 'dash:recentNotices' },
   );
   const recentNoticeItems = recentNotices.data?.items ?? [];
 
-  const approvedNeedingCheckIn = useMemo(() => {
-    if (!isSecurity) return 0;
-    const checkedInIds = new Set<string>();
-    for (const e of gateEvents.data?.items ?? []) {
-      if (e.visitorId) checkedInIds.add(e.visitorId);
-    }
-    return (approvedWalkIns.data?.items ?? []).filter((v) => !checkedInIds.has(v.id)).length;
-  }, [isSecurity, approvedWalkIns.data, gateEvents.data]);
-
   const attentionRows = useMemo<AttentionRowData[]>(() => {
-    const rows: AttentionRowData[] = [];
-    if (isResident) {
-      const pending = pendingWalkIns.data?.totalCount ?? 0;
-      if (pending > 0) {
-        rows.push({ key: 'pending', label: 'Walk-ins to approve', count: pending, icon: 'people', tint: '#bf8700', onPress: () => onNavigate({ name: 'walkInApprovals' }) });
-      }
-      const parcels = awaitingParcels.data?.totalCount ?? 0;
-      if (parcels > 0) {
-        rows.push({ key: 'parcels', label: 'Parcels to collect', count: parcels, icon: 'cube', tint: '#cf5500', onPress: () => onNavigate({ name: 'myParcels' }) });
-      }
-    }
-    if (isSecurity && approvedNeedingCheckIn > 0) {
-      rows.push({ key: 'approved', label: 'Approved walk-ins', count: approvedNeedingCheckIn, icon: 'checkmark-done', tint: '#1a7f37', onPress: () => onNavigate({ name: 'walkInApprovals' }) });
-    }
-    return rows;
-  }, [isResident, isSecurity, pendingWalkIns.data, awaitingParcels.data, approvedNeedingCheckIn, onNavigate]);
+    return (tasksSummary.data ?? []).map((t) => ({
+      key: t.type,
+      label: t.label,
+      count: t.count,
+      icon: taskTypeIcon(t.type),
+      tint: taskTypeTint(t.severity),
+      onPress: () => onNavigate({ name: 'myTasks', type: t.type }),
+    }));
+  }, [tasksSummary.data, onNavigate]);
+
+  const attentionTotal = useMemo(
+    () => (tasksSummary.data ?? []).reduce((s, t) => s + t.count, 0),
+    [tasksSummary.data],
+  );
 
   // Community tiles: role-aware (guard gate ops first, then resident features). Personal tiles:
   // the resident's own-account actions. Each tile is an icon + label in the image-1 grid style.
@@ -860,7 +829,15 @@ function DashboardTab({
 
       {attentionRows.length > 0 ? (
         <View style={styles.attentionBlock}>
-          <Text style={styles.attentionHeading}>Needs your attention</Text>
+          <Pressable
+            onPress={() => onNavigate({ name: 'myTasks' })}
+            accessibilityRole="button"
+            accessibilityLabel={`Need to action, ${attentionTotal} items, view all`}
+            style={styles.attentionHeadRow}
+          >
+            <Text style={styles.attentionHeading}>Needs your attention ({attentionTotal})</Text>
+            <Ionicons name="chevron-forward" size={18} color={theme.color.mutedText} />
+          </Pressable>
           <View style={styles.attentionCard}>
             {attentionRows.map((r, i) => (
               <AttentionRow
@@ -1003,6 +980,41 @@ function DashTab({ label, active, onPress }: { label: string; active: boolean; o
 
 function emptyPage<T>(): PagedData<T> {
   return { items: [], page: 1, pageSize: 0, totalCount: 0 };
+}
+
+function taskTypeIcon(type: string): keyof typeof Ionicons.glyphMap {
+  switch (type) {
+    case MyTaskType.WalkInApproval:
+    case MyTaskType.ApprovedWalkInCheckIn:
+      return 'people';
+    case MyTaskType.ParcelPickup:
+      return 'cube';
+    case MyTaskType.MaintenanceDue:
+    case MyTaskType.OverdueBill:
+    case MyTaskType.PendingPaymentApproval:
+      return 'cash';
+    case MyTaskType.KycPending:
+      return 'shield-checkmark';
+    case MyTaskType.ActiveSos:
+      return 'alert-circle';
+    case MyTaskType.ResidentToVerify:
+      return 'person-add';
+    case MyTaskType.OpenTicket:
+      return 'construct';
+    default:
+      return 'ellipse';
+  }
+}
+
+function taskTypeTint(severity: string): string {
+  switch (severity) {
+    case 'urgent':
+      return '#cf222e';
+    case 'warning':
+      return '#bf8700';
+    default:
+      return '#0969da';
+  }
 }
 
 interface AttentionRowData {
@@ -1454,6 +1466,7 @@ const styles = StyleSheet.create({
   dashTileIcon: { width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   dashTileLabel: { fontSize: theme.fontSize.caption, fontWeight: '600', color: theme.color.text, textAlign: 'center', lineHeight: 14 },
   attentionBlock: { marginBottom: theme.spacing.md, gap: theme.spacing.sm },
+  attentionHeadRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   attentionHeading: { fontSize: theme.fontSize.label, fontWeight: '800', color: theme.color.text, textTransform: 'uppercase', letterSpacing: 0.4 },
   attentionCard: {
     backgroundColor: theme.color.surface,

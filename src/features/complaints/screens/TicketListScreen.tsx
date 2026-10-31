@@ -11,6 +11,7 @@ import type { PagedData } from '@/types/envelope';
 import type { Ticket } from '@/types/helpdesk';
 import type { ResourceClients } from '@/services/resources';
 import { ticketStatusTone, humanizeCode } from '@/utils/status';
+import { parseUtc } from '@/utils/datetime';
 import { TicketDetailScreen } from './TicketDetailScreen';
 
 export interface TicketListScreenProps {
@@ -136,7 +137,7 @@ function toneColor(tone: ReturnType<typeof ticketStatusTone>): string {
 }
 
 function formatDate(iso: string): string {
-  const d = new Date(iso);
+  const d = parseUtc(iso);
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString();
 }
 

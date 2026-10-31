@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Share } from 'react-native';
 import { Screen } from '@/components/ui/Screen';
+import { parseUtc } from '@/utils/datetime';
 import { SectionHeading } from '@/components/ui/SectionHeading';
 import { AppTextField } from '@/components/ui/AppTextField';
 import { AppButton } from '@/components/ui/AppButton';
@@ -166,6 +167,6 @@ async function shareAuthorization(result: AuthorizeCollectorResult, parcel: Parc
 }
 
 function formatDateTime(iso: string): string {
-  const d = new Date(iso);
+  const d = parseUtc(iso);
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
 }

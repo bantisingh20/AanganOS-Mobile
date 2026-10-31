@@ -11,6 +11,7 @@ import { AsyncBoundary } from '@/components/ui/AsyncBoundary';
 import { MasterDataDropdown } from '@/components/ui/MasterDataDropdown';
 import { PhotoPicker } from '@/components/ui/PhotoPicker';
 import { useAsyncAction } from '@/hooks';
+import { invalidateAsyncCache } from '@/hooks/useAsync';
 import { theme } from '@/theme';
 import { HelpdeskMasterDataKeys } from '@/types/helpdesk';
 import type { Ticket } from '@/types/helpdesk';
@@ -80,6 +81,7 @@ export function RaiseTicketScreen({ resources, onBack }: RaiseTicketScreenProps)
       })
       .then((t) => {
         setRaised(t);
+        invalidateAsyncCache('dash:');
         return t;
       });
   });

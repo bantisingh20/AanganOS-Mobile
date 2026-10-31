@@ -2,14 +2,34 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { toFormError, type FormErrorView } from '@/utils/formError';
 import { showErrorAlert } from '@/utils/errorAlert';
 
-/** The lifecycle of an async read, exposed to a screen so it can render the right state. */
 export interface AsyncState<T> {
   readonly data: T | null;
   readonly loading: boolean;
-  /** Normalized, screen-ready error view (banner message + field map), or null. */
   readonly error: FormErrorView | null;
-  /** Re-run the loader (e.g. pull-to-refresh / retry button). */
   readonly reload: () => void;
+}
+
+export interface AsyncOptions {
+  cacheKey?: string;
+  cacheTtlMs?: number;
+}
+
+interface CacheEntry {
+  value: unknown;
+  at: number;
+}
+
+const DEFAULT_CACHE_TTL_MS = 60_000;
+const asyncCache = new Map<string, CacheEntry>();
+
+export function invalidateAsyncCache(prefix?: string): void {
+  if (!prefix) {
+    asyncCache.clear();
+    return;
+  }
+  for (const key of [...asyncCache.keys()]) {
+    if (key.startsWith(prefix)) asyncCache.delete(key);
+  }
 }
 
 /**
@@ -22,26 +42,43 @@ export interface AsyncState<T> {
 export function useAsync<T>(
   loader: (signal: AbortSignal) => Promise<T>,
   deps: readonly unknown[],
+  options: AsyncOptions = {},
 ): AsyncState<T> {
-  const [data, setData] = useState<T | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const { cacheKey, cacheTtlMs = DEFAULT_CACHE_TTL_MS } = options;
+
+  const cached = cacheKey ? asyncCache.get(cacheKey) : undefined;
+  const cachedFresh = cached && Date.now() - cached.at < cacheTtlMs;
+
+  const [data, setData] = useState<T | null>(cached ? (cached.value as T) : null);
+  const [loading, setLoading] = useState<boolean>(!cachedFresh);
   const [error, setError] = useState<FormErrorView | null>(null);
   const [nonce, setNonce] = useState(0);
-  // Keep the latest loader without making it a dependency (callers pass inline closures).
   const loaderRef = useRef(loader);
   loaderRef.current = loader;
 
   useEffect(() => {
+    const entry = cacheKey ? asyncCache.get(cacheKey) : undefined;
+    const fresh = entry && Date.now() - entry.at < cacheTtlMs;
+
+    if (entry) {
+      setData(entry.value as T);
+    }
+    if (fresh && nonce === 0) {
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     const controller = new AbortController();
     let active = true;
-    setLoading(true);
+    setLoading(!entry);
     setError(null);
     loaderRef
       .current(controller.signal)
       .then((result) => {
-        if (active) {
-          setData(result);
-        }
+        if (!active) return;
+        if (cacheKey) asyncCache.set(cacheKey, { value: result, at: Date.now() });
+        setData(result);
       })
       .catch((err: unknown) => {
         if (active && !controller.signal.aborted) {
@@ -58,9 +95,13 @@ export function useAsync<T>(
       controller.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [...deps, nonce]);
+  }, [...deps, nonce, cacheKey]);
 
-  const reload = useCallback(() => setNonce((n) => n + 1), []);
+  const reload = useCallback(() => {
+    if (cacheKey) asyncCache.delete(cacheKey);
+    setNonce((n) => n + 1);
+  }, [cacheKey]);
+
   return { data, loading, error, reload };
 }
 
@@ -98,6 +139,7 @@ export function useAsyncAction<Args extends unknown[]>(
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<FormErrorView | null>(null);
   const mounted = useRef(true);
+  const inFlight = useRef(false);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -107,6 +149,8 @@ export function useAsyncAction<Args extends unknown[]>(
 
   const run = useCallback(
     async (...args: Args): Promise<boolean> => {
+      if (inFlight.current) return false;
+      inFlight.current = true;
       setRunning(true);
       setError(null);
       try {
@@ -121,6 +165,7 @@ export function useAsyncAction<Args extends unknown[]>(
         }
         return false;
       } finally {
+        inFlight.current = false;
         if (mounted.current) {
           setRunning(false);
         }

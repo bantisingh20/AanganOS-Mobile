@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, FlatList, Image, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FormScreen } from '@/components/ui/FormScreen';
@@ -53,19 +53,11 @@ function initialsOf(name: string): string {
   return (parts[0]![0]! + parts[1]![0]!).toUpperCase();
 }
 
-/** Resolve the login status for a page of residents in parallel (bounded by the page size). */
-async function toRows(
-  residents: readonly Resident[],
-  resources: ResourceClients,
-  signal?: AbortSignal,
-): Promise<ResidentRow[]> {
-  return Promise.all(
-    residents.map(async (resident) => {
-      if (!resident.userId) return { resident, status: null } as ResidentRow;
-      const user = await resources.users.get(resident.userId, signal ? { signal } : undefined).catch(() => null);
-      return { resident, status: user ? user.status : null } as ResidentRow;
-    }),
-  );
+function toRows(residents: readonly Resident[]): ResidentRow[] {
+  return residents.map((resident) => ({
+    resident,
+    status: resident.userId ? resident.loginStatus : null,
+  }));
 }
 
 function warn(message: string): void {
@@ -93,6 +85,7 @@ export function ResidentListScreen({ resources, queueOnly = false, onBack }: Res
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<FormErrorView | null>(null);
   const [sheet, setSheet] = useState<SheetMode>({ kind: 'closed' });
+  const inFlightRef = useRef(false);
 
   const verificationStatus = queue ? ResidentVerificationStatus.Pending : undefined;
   const hasMore = rows.length < totalCount;
@@ -100,6 +93,8 @@ export function ResidentListScreen({ resources, queueOnly = false, onBack }: Res
   /** Load a specific page; page 1 replaces, later pages append. */
   const loadPage = useCallback(
     async (p: number) => {
+      if (inFlightRef.current) return;
+      inFlightRef.current = true;
       try {
         if (p === 1) { setInitialLoading(true); setError(null); }
         else setLoadingMore(true);
@@ -107,7 +102,7 @@ export function ResidentListScreen({ resources, queueOnly = false, onBack }: Res
           { page: p, pageSize: PAGE_SIZE },
           { ...(verificationStatus ? { verificationStatus } : {}) },
         );
-        const pageRows = await toRows(list.items, resources);
+        const pageRows = toRows(list.items);
         setTotalCount(list.totalCount);
         setPage(p);
         setRows((prev) => (p === 1 ? pageRows : [...prev, ...pageRows]));
@@ -115,6 +110,7 @@ export function ResidentListScreen({ resources, queueOnly = false, onBack }: Res
         if (p === 1) setError(toFormError(e));
         else showErrorAlert(e, 'Could not load more');
       } finally {
+        inFlightRef.current = false;
         setInitialLoading(false);
         setLoadingMore(false);
       }
@@ -127,7 +123,7 @@ export function ResidentListScreen({ resources, queueOnly = false, onBack }: Res
   useEffect(() => { void loadPage(1); }, [loadPage]);
 
   const loadMore = useCallback(() => {
-    if (!loadingMore && !initialLoading && hasMore) {
+    if (!inFlightRef.current && !loadingMore && !initialLoading && hasMore) {
       void loadPage(page + 1);
     }
   }, [loadingMore, initialLoading, hasMore, page, loadPage]);
@@ -351,19 +347,15 @@ function ResidentSheet({
   const isEdit = mode.kind === 'edit';
   const editing = mode.kind === 'edit' ? mode.resident : null;
 
-  // Available units for ADD = units with no owner in their active household (an owner is defined
-  // exactly once per unit). Only loaded when adding; editing doesn't change the unit here.
   const available = useAsync<Unit[]>(
     async (signal) => {
       if (mode.kind !== 'add') return [];
-      const list: PagedData<Unit> = await resources.units.list({ pageSize: 100 }, {}, { signal });
-      const checks = await Promise.all(
-        list.items.map(async (unit) => {
-          const members = await resources.units.listHousehold(unit.id, { signal }).catch(() => []);
-          return members.some((m) => m.residentType === 'owner') ? null : unit;
-        }),
+      const list: PagedData<Unit> = await resources.units.list(
+        { pageSize: 100 },
+        { availableForOwner: true },
+        { signal },
       );
-      return checks.filter((u): u is Unit => u !== null);
+      return list.items;
     },
     [mode.kind],
   );

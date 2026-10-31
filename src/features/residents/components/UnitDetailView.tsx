@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FormSection } from '@/components/ui/FormSection';
+import { parseUtc } from '@/utils/datetime';
 import { AsyncBoundary } from '@/components/ui/AsyncBoundary';
 import { EntityCard } from '@/components/ui/EntityCard';
 import { Badge } from '@/components/ui/Badge';
@@ -210,7 +211,7 @@ function Attr({ icon, label, value }: { icon: keyof typeof Ionicons.glyphMap; la
 
 /** Format an ISO date for display; falls back to the raw value if it can't be parsed. */
 function formatDate(iso: string): string {
-  const d = new Date(iso);
+  const d = parseUtc(iso);
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString();
 }
 

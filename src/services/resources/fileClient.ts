@@ -76,6 +76,15 @@ export class FileClient {
 
   /** Upload a local file and return its stored reference. Throws {@link ApiRequestError} on failure. */
   async upload(file: LocalFile, options: UploadFileOptions): Promise<StoredFileReference> {
+    const mime = (file.mimeType ?? 'image/jpeg').toLowerCase();
+    if (!mime.startsWith('image/')) {
+      throw new ApiRequestError({
+        code: 'UNSUPPORTED_MEDIA_TYPE',
+        message: 'Only image files can be uploaded.',
+        correlationId: '',
+        httpStatus: 415,
+      });
+    }
     // The minimal-API endpoint binds `IFormFile file` from the multipart body but the
     // owningResourceType / communityId / owningResourceId arguments from the QUERY STRING — so these
     // go on the URL, not as form fields (sending them as form fields yields "parameter not provided").
@@ -106,8 +115,10 @@ export class FileClient {
     try {
       response = await this.fetchImpl(url, { method: 'POST', headers, body: form });
     } catch (cause) {
-      // eslint-disable-next-line no-console
-      console.warn(`[API-NET] POST ${url} (upload) failed: ${String((cause as Error)?.message ?? cause)}`);
+      if (__DEV__) {
+        // eslint-disable-next-line no-console
+        console.warn(`[API-NET] POST ${url} (upload) failed: ${String((cause as Error)?.message ?? cause)}`);
+      }
       throw new ApiRequestError({
         code: 'INTEGRATION_FAILURE',
         message: 'Photo upload failed. Check your connection and try again.',

@@ -49,22 +49,20 @@ export function friendlyMessageForCode(code: ErrorCode): string {
  * duplicated. A transport/parse failure (not an ApiRequestError) collapses to the generic message.
  */
 export function toFormError(err: unknown): FormErrorView {
-  // Diagnostic log (dev aid): record the REAL error — code, HTTP status, correlation id and the
-  // server message — to the console/logcat so an intermittent failure can be diagnosed from
-  // `adb logcat`. The user still only sees the friendly message below. No secrets are logged
-  // (tokens/passwords never reach an ApiRequestError; the server message is a safe business line).
-  if (err instanceof ApiRequestError) {
-    // eslint-disable-next-line no-console
-    console.warn(
-      `[API-ERROR] code=${err.code} http=${err.httpStatus} corr=${err.correlationId} msg=${err.message}` +
-        (Object.keys(err.fieldErrorMap).length ? ` fields=${JSON.stringify(err.fieldErrorMap)}` : ''),
-    );
-  } else if (err instanceof Error) {
-    // eslint-disable-next-line no-console
-    console.warn(`[API-ERROR] non-api error: ${err.name}: ${err.message}`);
-  } else {
-    // eslint-disable-next-line no-console
-    console.warn('[API-ERROR] unknown error value');
+  if (__DEV__) {
+    if (err instanceof ApiRequestError) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[API-ERROR] code=${err.code} http=${err.httpStatus} corr=${err.correlationId} msg=${err.message}` +
+          (Object.keys(err.fieldErrorMap).length ? ` fields=${JSON.stringify(err.fieldErrorMap)}` : ''),
+      );
+    } else if (err instanceof Error) {
+      // eslint-disable-next-line no-console
+      console.warn(`[API-ERROR] non-api error: ${err.name}: ${err.message}`);
+    } else {
+      // eslint-disable-next-line no-console
+      console.warn('[API-ERROR] unknown error value');
+    }
   }
 
   if (err instanceof ApiRequestError) {

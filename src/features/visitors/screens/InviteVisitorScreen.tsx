@@ -26,7 +26,6 @@ export interface InviteVisitorScreenProps {
   onBack?: () => void;
 }
 
-/** A date `days` from the start of today (local), at local midnight, as an ISO string. */
 function dateFromToday(days: number): string {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
@@ -34,11 +33,16 @@ function dateFromToday(days: number): string {
   return d.toISOString();
 }
 
-/** End-of-day (23:59:59 local) for the given ISO date — a valid-until should cover the whole day. */
 function endOfDay(iso: string): string {
   const d = new Date(iso);
   d.setHours(23, 59, 59, 0);
   return d.toISOString();
+}
+
+function toCalendarDayUtc(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0)).toISOString();
 }
 
 /** Raise a client-side validation toast (native-app style — no inline error UI). */
@@ -99,7 +103,7 @@ export function InviteVisitorScreen({ resources, onBack }: InviteVisitorScreenPr
         visitorName: visitorName.trim(),
         validUntilUtc: endOfDay(validUntil!),
         numberOfPersons: personsNum,
-        ...(visitDate ? { visitDateUtc: visitDate } : {}),
+        ...(visitDate ? { visitDateUtc: toCalendarDayUtc(visitDate) } : {}),
         ...(phone.trim() ? { phone: phone.trim() } : {}),
         ...(email.trim() ? { email: email.trim() } : {}),
         ...(vehicle.trim() ? { vehicleNumber: vehicle.trim() } : {}),

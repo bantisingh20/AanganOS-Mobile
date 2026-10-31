@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { FormScreen } from '@/components/ui/FormScreen';
+import { parseUtc } from '@/utils/datetime';
 import { AppButton } from '@/components/ui/AppButton';
 import { AsyncBoundary } from '@/components/ui/AsyncBoundary';
 import { EntityCard, type MetaChip } from '@/components/ui/EntityCard';
@@ -140,7 +141,7 @@ function canAuthorize(p: Parcel): boolean {
 }
 
 function formatDate(iso: string): string {
-  const d = new Date(iso);
+  const d = parseUtc(iso);
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString();
 }
 

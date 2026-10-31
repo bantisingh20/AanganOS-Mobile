@@ -1,7 +1,8 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { FlatList, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FormScreen } from '@/components/ui/FormScreen';
+import { parseUtc } from '@/utils/datetime';
 import { SectionHeading } from '@/components/ui/SectionHeading';
 import { AppTextField } from '@/components/ui/AppTextField';
 import { AppButton } from '@/components/ui/AppButton';
@@ -76,8 +77,12 @@ export function RecurringVisitorsScreen({ resources, onBack }: RecurringVisitors
     return () => { live = false; };
   }, [resources.onboarding]);
 
+  const inFlightRef = useRef(false);
+
   const loadPage = useCallback(
     async (p: number, wantActive: boolean) => {
+      if (inFlightRef.current) return;
+      inFlightRef.current = true;
       try {
         if (p === 1) { setInitialLoading(true); setError(null); }
         else setLoadingMore(true);
@@ -91,6 +96,7 @@ export function RecurringVisitorsScreen({ resources, onBack }: RecurringVisitors
       } catch (e) {
         if (p === 1) setError(toFormError(e));
       } finally {
+        inFlightRef.current = false;
         setInitialLoading(false);
         setLoadingMore(false);
       }
@@ -103,7 +109,7 @@ export function RecurringVisitorsScreen({ resources, onBack }: RecurringVisitors
   const reload = useCallback(() => { void loadPage(1, tab === 'active'); }, [loadPage, tab]);
 
   const loadMore = useCallback(() => {
-    if (!loadingMore && !initialLoading && hasMore) {
+    if (!inFlightRef.current && !loadingMore && !initialLoading && hasMore) {
       void loadPage(page + 1, tab === 'active');
     }
   }, [loadingMore, initialLoading, hasMore, page, loadPage, tab]);
@@ -559,7 +565,7 @@ function describeDays(mask: number): string {
 }
 
 function formatDate(iso: string): string {
-  const d = new Date(iso);
+  const d = parseUtc(iso);
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FormScreen } from '@/components/ui/FormScreen';
+import { parseUtc } from '@/utils/datetime';
 import { FormSection } from '@/components/ui/FormSection';
 import { AppTextField } from '@/components/ui/AppTextField';
 import { AppButton } from '@/components/ui/AppButton';
@@ -119,10 +120,10 @@ export function WorkOrderDetailScreen({ resources, workOrderId, initialWorkOrder
   const [hourlyRate, setHourlyRate] = useState('');
   const [labourNotes, setLabourNotes] = useState('');
   const addLabour = useAsyncAction(() => {
-    const h = Number(hours);
-    const rate = Number(hourlyRate);
-    if (!workerName.trim() || Number.isNaN(h) || Number.isNaN(rate)) {
-      return Promise.reject(new Error('Enter a worker name, hours and hourly rate'));
+    const h = Number(hours.trim());
+    const rate = Number(hourlyRate.trim());
+    if (!workerName.trim() || hours.trim() === '' || hourlyRate.trim() === '' || !Number.isFinite(h) || !Number.isFinite(rate) || h <= 0 || rate < 0) {
+      return Promise.reject(new Error('Enter a worker name, positive hours and a valid hourly rate'));
     }
     return resources.maintenance
       .addWorkOrderLabour(workOrderId, {
@@ -332,7 +333,7 @@ function LineRow({ title, sub, total }: { title: string; sub: string; total: str
 }
 
 function formatDateTime(iso: string): string {
-  const d = new Date(iso);
+  const d = parseUtc(iso);
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
 }
 

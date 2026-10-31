@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FormScreen } from '@/components/ui/FormScreen';
+import { parseUtc } from '@/utils/datetime';
 import { AsyncBoundary } from '@/components/ui/AsyncBoundary';
 import { Badge } from '@/components/ui/Badge';
 import { Pager } from '@/components/ui/Pager';
@@ -105,7 +106,7 @@ function toneColor(tone: ReturnType<typeof announcementCategoryTone>): string {
 }
 
 function formatDateTime(iso: string): string {
-  const d = new Date(iso);
+  const d = parseUtc(iso);
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
 }
 

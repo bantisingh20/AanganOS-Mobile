@@ -14,6 +14,8 @@ import { FileClient } from './fileClient';
 import { UsersClient } from './usersClient';
 import { NotificationsClient } from './notificationsClient';
 import { OnboardingClient } from './onboardingClient';
+import { MyTasksClient } from './myTasksClient';
+import { MaintenanceBillsClient } from './maintenanceBillsClient';
 
 export * from './query';
 export * from './notificationsClient';
@@ -32,6 +34,8 @@ export * from './helpdeskClient';
 export * from './maintenanceClient';
 export * from './announcementsClient';
 export * from './onboardingClient';
+export * from './myTasksClient';
+export * from './maintenanceBillsClient';
 export * from './offlineQueue';
 
 /**
@@ -66,6 +70,10 @@ export interface ResourceClients {
   readonly notifications: NotificationsClient;
   /** Anonymous resident self-onboarding: config flag, community/unit pickers, self-register. */
   readonly onboarding: OnboardingClient;
+  /** Aggregated "my tasks / need to action" summary + cards for the signed-in user. */
+  readonly myTasks: MyTasksClient;
+  /** Resident maintenance dues: list own due bills + submit a payment for approval. */
+  readonly maintenanceBills: MaintenanceBillsClient;
 }
 
 /** Construct the bundle of resource clients over an {@link ApiClient}. */
@@ -86,5 +94,7 @@ export function createResourceClients(api: ApiClient): ResourceClients {
     users: new UsersClient(api),
     notifications: new NotificationsClient(api),
     onboarding: new OnboardingClient(api),
+    myTasks: new MyTasksClient(api),
+    maintenanceBills: new MaintenanceBillsClient(api),
   };
 }

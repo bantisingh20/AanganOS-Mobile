@@ -43,18 +43,14 @@ function warn(message: string): void {
  * community). Uses the shared {@link FormScreen} scaffold.
  */
 export function AddResidentScreen({ resources, onSaved, onBack }: AddResidentScreenProps) {
-  // Load units, then keep only those whose active household has no owner (available for an owner).
   const available = useAsync<AvailableUnit[]>(
     async (signal) => {
-      const page: PagedData<Unit> = await resources.units.list({ pageSize: DEFAULT_PAGE_SIZE }, {}, { signal });
-      const checks = await Promise.all(
-        page.items.map(async (unit) => {
-          const members = await resources.units.listHousehold(unit.id, { signal }).catch(() => []);
-          const hasOwner = members.some((m) => m.residentType === 'owner');
-          return hasOwner ? null : ({ unit } as AvailableUnit);
-        }),
+      const page: PagedData<Unit> = await resources.units.list(
+        { pageSize: DEFAULT_PAGE_SIZE },
+        { availableForOwner: true },
+        { signal },
       );
-      return checks.filter((x): x is AvailableUnit => x !== null);
+      return page.items.map((unit) => ({ unit } as AvailableUnit));
     },
     [],
   );

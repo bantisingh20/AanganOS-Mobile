@@ -39,6 +39,7 @@ export interface Resident {
   readonly govtIdType: string | null;
   readonly govtIdFrontFileId: string | null;
   readonly govtIdBackFileId: string | null;
+  readonly loginStatus: string | null;
 }
 
 /**

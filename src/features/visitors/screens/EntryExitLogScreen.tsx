@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { FlatList, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FormScreen } from '@/components/ui/FormScreen';
@@ -11,8 +11,10 @@ import { theme } from '@/theme';
 import type { PagedData } from '@/types/envelope';
 import type { EntryExitEvent } from '@/types/gate';
 import type { ResourceClients, GateOfflineQueue, QueuedGateCapture, RecordExitBody } from '@/services/resources';
+import { newIdempotencyKey } from '@/services/resources';
 import { ApiRequestError } from '@/services/api/errors';
 import { toFormError, type FormErrorView } from '@/utils/formError';
+import { parseUtc } from '@/utils/datetime';
 import { humanizeCode } from '@/utils/status';
 
 export interface EntryExitLogScreenProps {
@@ -38,9 +40,12 @@ export function EntryExitLogScreen({ resources, offlineQueue, onBack, onOpenDeta
   const [queued, setQueued] = useState<QueuedGateCapture[]>([]);
 
   const hasMore = rows.length < totalCount;
+  const inFlightRef = useRef(false);
 
   const loadPage = useCallback(
     async (p: number, f: Filter) => {
+      if (inFlightRef.current) return;
+      inFlightRef.current = true;
       try {
         if (p === 1) { setInitialLoading(true); setError(null); }
         else setLoadingMore(true);
@@ -54,6 +59,7 @@ export function EntryExitLogScreen({ resources, offlineQueue, onBack, onOpenDeta
       } catch (e) {
         if (p === 1) setError(toFormError(e));
       } finally {
+        inFlightRef.current = false;
         setInitialLoading(false);
         setLoadingMore(false);
       }
@@ -66,7 +72,7 @@ export function EntryExitLogScreen({ resources, offlineQueue, onBack, onOpenDeta
   const reload = useCallback(() => { void loadPage(1, filter); }, [loadPage, filter]);
 
   const loadMore = useCallback(() => {
-    if (!loadingMore && !initialLoading && hasMore) {
+    if (!inFlightRef.current && !loadingMore && !initialLoading && hasMore) {
       void loadPage(page + 1, filter);
     }
   }, [loadingMore, initialLoading, hasMore, page, loadPage, filter]);
@@ -85,14 +91,15 @@ export function EntryExitLogScreen({ resources, offlineQueue, onBack, onOpenDeta
   const exit = useAsyncAction((body: RecordExitBody) => recordExit(body));
 
   async function recordExit(body: RecordExitBody): Promise<unknown> {
+    const idempotencyKey = newIdempotencyKey();
     try {
-      const event = await resources.gate.recordExit(body);
+      const event = await resources.gate.recordExit(body, idempotencyKey);
       setNotice('Exit recorded.');
       reload();
       return event;
     } catch (err) {
       if (offlineQueue && isTransient(err)) {
-        await offlineQueue.enqueue('exit', body);
+        await offlineQueue.enqueue('exit', body, idempotencyKey);
         setQueued(await offlineQueue.list());
         setNotice('Offline — exit saved and will sync when back online.');
         return undefined;
@@ -283,12 +290,12 @@ function isTransient(err: unknown): boolean {
 }
 
 function formatTime(iso: string): string {
-  const d = new Date(iso);
+  const d = parseUtc(iso);
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 }
 
 function sinceLabel(iso: string): string {
-  const start = new Date(iso).getTime();
+  const start = parseUtc(iso).getTime();
   if (Number.isNaN(start)) return '';
   const mins = Math.max(0, Math.floor((Date.now() - start) / 60000));
   if (mins < 60) return `${mins}m on-site`;

@@ -76,6 +76,10 @@ export function WalkInCaptureScreen({ resources, onBack }: WalkInCaptureScreenPr
   };
 
   const onSelectUnit = async (u: Unit | null) => {
+    if (u?.id !== unit?.id || u?.communityId !== unit?.communityId) {
+      setPhotoFileId(null);
+      setPhotoUri(null);
+    }
     setUnit(u);
     if (!u) return;
     try {

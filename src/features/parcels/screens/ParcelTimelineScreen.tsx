@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Screen } from '@/components/ui/Screen';
+import { parseUtc } from '@/utils/datetime';
 import { SectionHeading } from '@/components/ui/SectionHeading';
 import { AsyncBoundary } from '@/components/ui/AsyncBoundary';
 import { ListRow } from '@/components/ui/ListRow';
@@ -77,7 +78,7 @@ function describeEvent(e: CustodyTimelineEntry): string {
 }
 
 function formatDateTime(iso: string): string {
-  const d = new Date(iso);
+  const d = parseUtc(iso);
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
 }
 

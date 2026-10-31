@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FormScreen } from '@/components/ui/FormScreen';
+import { parseUtc } from '@/utils/datetime';
 import { FormSection } from '@/components/ui/FormSection';
 import { AppTextField } from '@/components/ui/AppTextField';
 import { AppButton } from '@/components/ui/AppButton';
@@ -177,7 +178,7 @@ export function SosScreen({ resources, onBack }: SosScreenProps) {
 }
 
 function formatTime(iso: string): string {
-  const d = new Date(iso);
+  const d = parseUtc(iso);
   return Number.isNaN(d.getTime())
     ? iso
     : d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });

@@ -13,6 +13,7 @@ import { PermissionAction, hasPermissionIn } from '@/auth/permissions';
 import type { LoginRequest, LoginResponse } from '@/types/auth';
 import { isRefreshTokenDead } from '@/auth/refreshFailure';
 import { ApiRequestError } from '@/services/api/errors';
+import { invalidateAsyncCache } from '@/hooks/useAsync';
 
 /**
  * Session lifecycle for the app shell (Req 1.1, 1.3). `restoring` is the launch state while we
@@ -144,6 +145,7 @@ export function AuthProvider({
               break;
             }
             setRoles(tokenStore.getRoles());
+            setPermissions(tokenStore.getPermissions());
             setUserId(tokenStore.getUserId());
             setDisplayName(tokenStore.getDisplayName());
             setStatus('authenticated');
@@ -175,6 +177,7 @@ export function AuthProvider({
   // auth flow (login screen) instead of leaving the current screen showing a stale 401 toast.
   useEffect(() => {
     const unsubscribe = tokenStore.onCleared(() => {
+      invalidateAsyncCache();
       setRoles([]);
       setPermissions([]);
       setUserId(null);
@@ -233,6 +236,7 @@ export function AuthProvider({
       await auth.logout();
     } finally {
       // AuthService.logout already clears the store even if the network call fails.
+      invalidateAsyncCache();
       setRoles([]);
       setPermissions([]);
       setUserId(null);

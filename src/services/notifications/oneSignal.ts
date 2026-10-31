@@ -20,6 +20,10 @@ export interface OneSignalSdk {
         event: 'change',
         listener: (change: { current: { id?: string | null } }) => void,
       ): void;
+      removeEventListener(
+        event: 'change',
+        listener: (change: { current: { id?: string | null } }) => void,
+      ): void;
     };
   };
 }
@@ -81,19 +85,22 @@ export async function registerDevice(options: RegisterDeviceOptions): Promise<st
 function waitForPlayerId(oneSignal: OneSignalSdk, timeoutMs: number): Promise<string | null> {
   return new Promise<string | null>((resolve) => {
     let settled = false;
-    const finish = (id: string | null) => {
-      if (!settled) {
-        settled = true;
-        resolve(id);
-      }
-    };
-
-    oneSignal.User.pushSubscription.addEventListener('change', (change) => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const onChange = (change: { current: { id?: string | null } }) => {
       const id = change.current.id;
       if (id) {
         finish(id);
       }
-    });
+    };
+    const finish = (id: string | null) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      oneSignal.User.pushSubscription.removeEventListener('change', onChange);
+      resolve(id);
+    };
+
+    oneSignal.User.pushSubscription.addEventListener('change', onChange);
 
     void oneSignal.User.pushSubscription.getIdAsync().then((id) => {
       if (id) {
@@ -101,6 +108,6 @@ function waitForPlayerId(oneSignal: OneSignalSdk, timeoutMs: number): Promise<st
       }
     });
 
-    setTimeout(() => finish(null), timeoutMs);
+    timer = setTimeout(() => finish(null), timeoutMs);
   });
 }
