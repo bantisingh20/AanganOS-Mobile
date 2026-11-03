@@ -36,6 +36,8 @@ const config: ExpoConfig = {
       {
         android: {
           minSdkVersion: 26,
+          enableProguardInReleaseBuilds: true,
+          enableShrinkResourcesInReleaseBuilds: true,
         },
       },
     ],
